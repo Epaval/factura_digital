@@ -1,0 +1,73 @@
+.App {
+  text-align: center;
+}
+
+.App-logo {
+  height: 40vmin;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .App-logo {
+    animation: App-logo-spin infinite 20s linear;
+  }
+}
+
+.App-header {
+  background-color: #282c34;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(10px + 2vmin);
+  color: white;
+}
+
+.App-link {
+  color: #61dafb;
+}
+
+@keyframes App-logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Estilos globales */
+html, body {
+  height: 100%; /* Asegura que el body ocupe toda la altura de la ventana */
+  margin: 0;
+  padding: 0;
+}
+
+.app-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh; /* Asegura que el contenedor ocupe al menos toda la altura de la ventana */
+}
+
+.main-content {
+  flex: 1; /* Hace que el contenido principal ocupe el espacio restante */
+}
+
+/* Estilos adicionales para el footer */
+footer {
+  background-color: #343a40; /* Color de fondo del footer */
+  color: white; /* Color del texto */
+  text-align: center;
+  padding: 1rem 0;
+}
+
+/* styles.css */
+@media (max-width: 576px) {
+  .header-button {
+      margin-bottom: 10px; /* Espacio entre botones en pantallas pequeñas */
+  }
+}
+
+
+
