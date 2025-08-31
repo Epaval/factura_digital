@@ -70,4 +70,35 @@ footer {
 }
 
 
+/* Mejora tarjetas */
+.bg-success.text-white {
+  background-color: #28a745 !important;
+}
 
+.bg-danger.text-white {
+  background-color: #dc3545 !important;
+}
+
+.bg-info.text-white {
+  background-color: #17a2b8 !important;
+}
+
+.bg-warning.text-dark {
+  background-color: #ffc107 !important;
+}
+
+.alert-success {
+  background-color: #d4edda;
+  color: #155724;
+}
+
+/* Dashboard */
+.badge {
+  font-size: 0.8em;
+  padding: 0.5em 0.8em;
+}
+
+.table th, .table td {
+  vertical-align: middle;
+  text-align: center;
+}
