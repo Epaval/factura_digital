@@ -55,18 +55,27 @@ function FormularioPagos({
     }
 
     const metodo_pago_id = parseInt(pago.metodo_pago_id);
-    if (isNaN(metodo_pago_id) || !metodosPago.some((m) => m.id === metodo_pago_id)) {
+    if (
+      isNaN(metodo_pago_id) ||
+      !metodosPago.some((m) => m.id === metodo_pago_id)
+    ) {
       setError("Método de pago inválido.");
       return;
     }
 
     const metodo = metodosPago.find((m) => m.id === metodo_pago_id);
-    if (!metodo.nombre.includes("Efectivo") && (!pago.referencia || pago.referencia.trim() === "")) {
+    if (
+      !metodo.nombre.includes("Efectivo") &&
+      (!pago.referencia || pago.referencia.trim() === "")
+    ) {
       setError("Referencia obligatoria para este método.");
       return;
     }
 
-    const montoEnBs = metodo.nombre === "Efectivo $" ? montoIngresado * dollarRate : montoIngresado;
+    const montoEnBs =
+      metodo.nombre === "Efectivo $"
+        ? montoIngresado * dollarRate
+        : montoIngresado;
 
     // Actualizar total pagado
     setTotalPagado((prev) => prev + montoEnBs);
@@ -108,7 +117,8 @@ function FormularioPagos({
         dollarRate,
         caja_id: cajaId,
         pagos: pagos.map((p) => ({
-          metodo_pago_id: metodosPago.find((m) => m.nombre === p.metodo_pago)?.id,
+          metodo_pago_id: metodosPago.find((m) => m.nombre === p.metodo_pago)
+            ?.id,
           monto: p.monto,
           referencia: p.referencia || null,
         })),
@@ -131,11 +141,19 @@ function FormularioPagos({
         <div className="col-md-4">
           <div className="p-3 text-center border rounded bg-light h-100">
             <small>Total Factura</small>
-            <h4 className="mb-0 mt-2 text-dark fw-bold">Bs.{totalFactura.toFixed(2)}</h4>
+            <h4 className="mb-0 mt-2 text-dark fw-bold">
+              Bs.{totalFactura.toFixed(2)}
+            </h4>
           </div>
         </div>
         <div className="col-md-4">
-          <div className={`p-3 text-center border rounded h-100 ${puedeGenerarFactura ? 'bg-success text-white' : 'bg-danger text-white'}`}>
+          <div
+            className={`p-3 text-center border rounded h-100 ${
+              puedeGenerarFactura
+                ? "bg-success text-white"
+                : "bg-danger text-white"
+            }`}
+          >
             <small>Total Pagado</small>
             <h4 className="mb-0 mt-2 fw-bold">Bs.{totalPagado.toFixed(2)}</h4>
           </div>
@@ -149,7 +167,9 @@ function FormularioPagos({
           ) : (
             <div className="p-3 text-center border rounded bg-warning text-dark h-100">
               <small>Restante</small>
-              <h4 className="mb-0 mt-2 fw-bold">Bs.{(-diferencia).toFixed(2)}</h4>
+              <h4 className="mb-0 mt-2 fw-bold">
+                Bs.{(-diferencia).toFixed(2)}
+              </h4>
             </div>
           )}
         </div>
@@ -182,12 +202,18 @@ function FormularioPagos({
             >
               <option value="">Seleccionar método</option>
               {metodosPago.map((m) => (
-                <option key={m.id} value={m.id}>{m.nombre}</option>
+                <option key={m.id} value={m.id}>
+                  {m.nombre}
+                </option>
               ))}
             </select>
           </div>
           <div className="col-md-3">
-            <label>{metodoSeleccionado?.nombre === "Efectivo $" ? "Monto ($)" : "Monto (Bs)"}</label>
+            <label>
+              {metodoSeleccionado?.nombre === "Efectivo $"
+                ? "Monto ($)"
+                : "Monto (Bs)"}
+            </label>
             <input
               type="number"
               step="0.01"
@@ -203,20 +229,57 @@ function FormularioPagos({
             <label>Referencia</label>
             <input
               type="text"
-              className="form-control"
+              inputMode="numeric"
+              minLength={6}
+              maxLength={6}
+              className={`form-control ${
+                pago.metodo !== "efectivo" &&
+                pago.referencia &&
+                pago.referencia.length !== 6
+                  ? "is-invalid"
+                  : ""
+              }`}
               name="referencia"
               value={pago.referencia}
               onChange={handleChange}
-              placeholder="Opcional"
+              placeholder={
+                pago.metodo === "efectivo"
+                  ? "Opcional"
+                  : "Últimos 6 dígitos de la transacción"
+              }
+              disabled={pago.metodo === "efectivo"}
             />
+            {pago.metodo !== "efectivo" && (
+              <div className="form-text">
+                {pago.referencia.length === 0
+                  ? "Ingrese los últimos 6 dígitos del comprobante."
+                  : pago.referencia.length < 6
+                  ? `Faltan ${6 - pago.referencia.length} dígitos.`
+                  : pago.referencia.length === 6
+                  ? "✅ Referencia válida"
+                  : "Sobran dígitos. Use solo los últimos 6."}
+              </div>
+            )}
+            {pago.metodo !== "efectivo" &&
+              pago.referencia &&
+              pago.referencia.length !== 6 && (
+                <div className="invalid-feedback d-block">
+                  La referencia debe tener exactamente 6 dígitos.
+                </div>
+              )}
           </div>
           <div className="col-md-1 d-flex align-items-end">
-            <button type="submit" className="btn btn-primary btn-lg w-100">+</button>
+            <button type="submit" className="btn btn-primary btn-lg w-100">
+              +
+            </button>
           </div>
         </div>
         {metodoSeleccionado?.nombre === "Efectivo $" && pago.monto && (
           <div className="alert alert-info mt-3 mb-0">
-            💵 <strong>${pago.monto}</strong> → <strong>Bs.{(parseFloat(pago.monto) * dollarRate).toFixed(2)}</strong>
+            💵 <strong>${pago.monto}</strong> →{" "}
+            <strong>
+              Bs.{(parseFloat(pago.monto) * dollarRate).toFixed(2)}
+            </strong>
           </div>
         )}
       </form>

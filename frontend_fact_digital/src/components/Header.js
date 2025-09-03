@@ -7,11 +7,20 @@ const Header = ({
   onConsultarProductos,
   onHistorialFacturas,
   onVerDashboard, 
+  onVerTodasFacturas,
+  esSupervisor,
 }) => {
   return (
     <header className="bg-dark text-white py-4">
       <div className="container d-flex flex-column flex-md-row justify-content-between align-items-center">
         <h1>Sistema de Facturación</h1>
+         {esSupervisor && (
+        <>          
+          <button className="btn btn-warning" onClick={onVerTodasFacturas}>
+            📄 Todas las Facturas
+          </button>
+        </>
+      )}
 
         <div className="d-flex flex-column flex-md-row">
           <button className="btn btn-primary mb-2 mb-md-0 mx-md-2" onClick={onNuevoCliente}>
@@ -23,9 +32,7 @@ const Header = ({
           <button className="btn btn-success mb-2 mb-md-0 mx-md-2" onClick={onHistorialFacturas}>
             Historial Facturas
           </button>
-          <button className="btn btn-secondary mb-2 mb-md-0 mx-md-2" onClick={onVerDashboard}>
-            📊 Dashboard de Supervisión
-          </button>
+         
         </div>
 
         <div>
