@@ -234,7 +234,13 @@ app.get("/clientes", (req, res) => {
 app.get("/productos", (req, res) => {
   db.query("SELECT * FROM productos", (err, results) => {
     if (err) return res.status(500).json({ message: "Error al obtener productos." });
-    const productos = results.map(p => ({ ...p, precio: parseFloat(p.precio) }));
+    
+    const productos = results.map(p => ({
+      ...p,
+      precio: parseFloat(p.precio),
+      cantidad: parseInt(p.cantidad) || 0
+    }));
+    
     res.json(productos);
   });
 });
@@ -609,6 +615,7 @@ app.post("/cajas/abrir", async (req, res) => {
 });
 
 app.post("/cajas/cerrar", async (req, res) => {
+  
   const { caja_id } = req.body;
   if (!caja_id || typeof caja_id !== "number") return res.status(400).json({ message: "Caja no válida." });
 
@@ -808,6 +815,318 @@ app.get("/facturas/todas", async (req, res) => {
     res.status(500).json({ message: "Error al cargar facturas." });
   }
 });
+
+
+// === RUTA: Dashboard del Admin ===
+app.get("/reportes/admin", async (req, res) => {
+  try {
+    const hoy = new Date().toISOString().split("T")[0];
+    const primerDiaMes = hoy.substring(0, 8) + "01";
+
+    // Total diario
+    const [totalDiario] = await promiseDb.query(
+      "SELECT COALESCE(SUM(total), 0) as total FROM facturas WHERE estado = 'pagado' AND DATE(fecha) = ?",
+      [hoy]
+    );
+    const totalDiarioVal = parseFloat(totalDiario[0].total) || 0;
+
+    // Total semanal
+    const [totalSemanal] = await promiseDb.query(
+      "SELECT COALESCE(SUM(total), 0) as total FROM facturas WHERE estado = 'pagado' AND YEARWEEK(fecha, 1) = YEARWEEK(CURDATE(), 1)"
+    );
+    const totalSemanalVal = parseFloat(totalSemanal[0].total) || 0;
+
+    // Total mensual
+    const [totalMensual] = await promiseDb.query(
+      "SELECT COALESCE(SUM(total), 0) as total FROM facturas WHERE estado = 'pagado' AND fecha >= ?",
+      [primerDiaMes]
+    );
+    const totalMensualVal = parseFloat(totalMensual[0].total) || 0;
+
+    // Total general
+    const [totalGeneral] = await promiseDb.query(
+      "SELECT COALESCE(SUM(total), 0) as total FROM facturas WHERE estado = 'pagado'"
+    );
+    const totalGeneralVal = parseFloat(totalGeneral[0].total) || 0;
+
+    // Impuestos
+    const [impuestos] = await promiseDb.query(
+      "SELECT COALESCE(SUM(total * 0.16), 0) as iva FROM facturas WHERE estado = 'pagado'"
+    );
+    const impuestosVal = parseFloat(impuestos[0].iva) || 0;
+
+    // 3. Pagos por tipo
+    const [pagosPorTipo] = await promiseDb.query(`
+      SELECT mp.nombre, COALESCE(SUM(p.monto), 0) as total
+      FROM metodos_pago mp
+      LEFT JOIN pagos p ON mp.id = p.metodo_pago_id
+      GROUP BY mp.id, mp.nombre
+    `);
+
+    // 4. Facturación por caja
+    const [facturacionPorCaja] = await promiseDb.query(`
+      SELECT c.nombre, COALESCE(SUM(f.total), 0) as total
+      FROM cajas c
+      LEFT JOIN facturas f ON c.id = f.caja_id AND f.estado = 'pagado'
+      GROUP BY c.id, c.nombre
+    `);
+
+    // 5. Facturación por empleado
+    const [facturacionPorEmpleado] = await promiseDb.query(`
+      SELECT e.nombre, e.apellido, COALESCE(SUM(f.total), 0) as total
+      FROM empleados e
+      LEFT JOIN cajas c ON e.id = c.empleado_id
+      LEFT JOIN facturas f ON c.id = f.caja_id AND f.estado = 'pagado'
+      GROUP BY e.id
+      ORDER BY total DESC
+      LIMIT 10
+    `);
+
+     // 1. Productos más vendidos
+    const [productosVendidos] = await promiseDb.query(`
+      SELECT 
+        p.descripcion,
+        p.codigo,
+        SUM(fd.cantidad) as cantidad_vendida,
+        SUM(fd.cantidad * fd.precio) as ingreso_total
+      FROM factura_detalle fd
+      JOIN productos p ON fd.producto_id = p.id
+      JOIN facturas f ON fd.factura_id = f.id
+      WHERE f.estado = 'pagado'
+      GROUP BY p.id
+      ORDER BY cantidad_vendida DESC
+      LIMIT 10
+    `);
+
+    // 2. Últimas facturas (detalle)
+    const [ultimasFacturas] = await promiseDb.query(`
+      SELECT 
+        f.numero_factura,
+        f.numero_control,
+        c.nombre AS cliente_nombre,
+        c.tipo_rif,
+        c.numero_rif,
+        f.fecha,
+        f.total,
+        f.estado
+      FROM facturas f
+      JOIN clientes c ON f.cliente_id = c.id
+      WHERE f.estado = 'pagado'
+      ORDER BY f.id DESC
+      LIMIT 20
+    `);
+
+    // 3. Compras por cliente
+    const [comprasPorCliente] = await promiseDb.query(`
+      SELECT 
+        c.id,
+        c.nombre,
+        c.tipo_rif,
+        c.numero_rif,
+        COALESCE(SUM(f.total), 0) as total_comprado,
+        COUNT(f.id) as total_facturas
+      FROM clientes c
+      LEFT JOIN facturas f ON c.id = f.cliente_id AND f.estado = 'pagado'
+      GROUP BY c.id
+      ORDER BY total_comprado DESC
+    `);   
+
+    res.json({
+      totalDiario: totalDiarioVal,
+      totalSemanal: totalSemanalVal,
+      totalMensual: totalMensualVal,
+      totalGeneral: totalGeneralVal,
+      impuestos: impuestosVal,
+      productosVendidos,
+      ultimasFacturas,
+      comprasPorCliente,
+      pagosPorTipo,
+      facturacionPorCaja,
+      facturacionPorEmpleado,
+    });
+
+  } catch (err) {
+    console.error("Error al cargar reportes:", err);
+    res.status(500).json({ message: "Error al cargar reportes." });
+  }
+});
+
+// RUTAS PARA CLIENTES
+
+// === RUTA: Crear nuevo cliente ===
+app.post("/clientes", async (req, res) => {
+  const { nombre, tipo_rif, numero_rif, correo, telefono, direccion, operador } = req.body;
+
+  if (!nombre || !tipo_rif || !numero_rif) {
+    return res.status(400).json({ message: "Nombre, tipo y número de RIF son obligatorios." });
+  }
+
+  try {
+    const [result] = await promiseDb.query(
+      "INSERT INTO clientes (nombre, tipo_rif, numero_rif, correo, telefono, direccion, operador) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [nombre, tipo_rif, numero_rif, correo || null, telefono || null, direccion || null, operador || null]
+    );
+
+    const nuevoCliente = {
+      id: result.insertId,
+      nombre,
+      tipo_rif,
+      numero_rif,
+      correo,
+      telefono,
+      direccion,
+      operador
+    };
+
+    res.status(201).json(nuevoCliente);
+  } catch (err) {
+    console.error("Error al registrar cliente:", err);
+    res.status(500).json({ message: "Error al registrar cliente." });
+  }
+});
+
+// === RUTA: Actualizar cliente por ID ===
+app.put("/clientes/:id", async (req, res) => {
+  const { id } = req.params;
+  const { nombre, tipo_rif, numero_rif, correo, telefono, direccion, operador } = req.body;
+
+  // Validación básica
+  if (!nombre || !tipo_rif || !numero_rif) {
+    return res.status(400).json({ message: "Nombre, tipo y número de RIF son obligatorios." });
+  }
+
+  try {
+    const [result] = await promiseDb.query(
+      `UPDATE clientes 
+       SET nombre = ?, tipo_rif = ?, numero_rif = ?, correo = ?, telefono = ?, direccion = ?, operador = ? 
+       WHERE id = ?`,
+      [nombre, tipo_rif, numero_rif, correo || null, telefono || null, direccion || null, operador || null, id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "Cliente no encontrado." });
+    }
+
+    // Devolver el cliente actualizado
+    const [rows] = await promiseDb.query("SELECT * FROM clientes WHERE id = ?", [id]);
+    res.json(rows[0]);
+  } catch (err) {
+    console.error("Error al actualizar cliente:", err);
+    res.status(500).json({ message: "Error al actualizar cliente." });
+  }
+});
+
+
+// === RUTA: Crear producto (solo admin/supervisor)
+app.post("/productos", async (req, res) => {
+  const { rol } = req.body;
+  const { codigo, descripcion, precio, cantidad } = req.body;
+
+  // ✅ Validar rol
+  const rolValido = ["admin", "supervisor"].includes(rol?.trim().toLowerCase());
+  if (!rolValido) {
+    return res.status(403).json({ message: "Acceso denegado. Rol no autorizado." });
+  }
+
+  // ✅ Validar datos del producto
+  if (!codigo || !descripcion || typeof precio !== "number" || typeof cantidad !== "number") {
+    return res.status(400).json({ message: "Datos incompletos o inválidos." });
+  }
+
+  try {
+    const [result] = await promiseDb.query(
+      "INSERT INTO productos (codigo, descripcion, precio, cantidad) VALUES (?, ?, ?, ?)",
+      [codigo, descripcion, precio, cantidad]
+    );
+
+    res.status(201).json({
+      id: result.insertId,
+      codigo,
+      descripcion,
+      precio,
+      cantidad,
+    });
+  } catch (err) {
+    console.error("Error al agregar producto:", err);
+    res.status(500).json({ message: "Error interno del servidor." });
+  }
+});
+
+// === RUTA: Actualizar producto por ID (solo admin o supervisor) ===
+app.put("/productos/:id", async (req, res) => {
+  const { id } = req.params;
+  const { codigo, descripcion, precio, cantidad, rol } = req.body;
+
+  // ✅ 1. Validar rol
+  const rolValido = ["admin", "supervisor"].includes(rol?.trim().toLowerCase());
+  if (!rolValido) {
+    return res.status(403).json({ 
+      message: "Acceso denegado. Solo admin o supervisor pueden editar productos." 
+    });
+  }
+
+  // ✅ 2. Validar datos del producto
+  if (!codigo || !descripcion) {
+    return res.status(400).json({ 
+      message: "Código y descripción son obligatorios." 
+    });
+  }
+
+  if (typeof precio !== "number" || isNaN(precio) || precio < 0) {
+    return res.status(400).json({ 
+      message: "Precio debe ser un número válido y mayor o igual a 0." 
+    });
+  }
+
+  if (typeof cantidad !== "number" || isNaN(cantidad) || cantidad < 0) {
+    return res.status(400).json({ 
+      message: "Cantidad debe ser un número válido y mayor o igual a 0." 
+    });
+  }
+
+  let connection;
+  try {
+    connection = await promiseDb.getConnection();
+    await connection.beginTransaction();
+
+    // ✅ 3. Verificar que el producto exista
+    const [rows] = await connection.query("SELECT * FROM productos WHERE id = ?", [id]);
+    if (rows.length === 0) {
+      throw new Error("Producto no encontrado.");
+    }
+
+    // ✅ 4. Actualizar producto
+    await connection.query(
+      "UPDATE productos SET codigo = ?, descripcion = ?, precio = ?, cantidad = ? WHERE id = ?",
+      [codigo, descripcion, precio, cantidad, id]
+    );
+
+    // ✅ 5. Obtener producto actualizado
+    const [actualizado] = await connection.query("SELECT * FROM productos WHERE id = ?", [id]);
+
+    await connection.commit();
+    connection.release();
+
+    // ✅ 6. Responder con el producto actualizado
+    res.json({
+      ...actualizado[0],
+      precio: parseFloat(actualizado[0].precio),
+      cantidad: parseInt(actualizado[0].cantidad)
+    });
+  } catch (err) {
+    if (connection) {
+      await connection.rollback();
+      connection.release();
+    }
+    console.error("Error al actualizar producto:", err);
+    res.status(500).json({ 
+      message: err.message || "Error interno del servidor." 
+    });
+  }
+});
+
+
+
 
 // ✅ Iniciar servidor
 const startServer = async () => {

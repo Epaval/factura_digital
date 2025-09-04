@@ -5,7 +5,7 @@ const Footer = () => {
 
     return (
         <footer className="bg-dark text-white text-center py-3 mt-5">
-            <p>&copy; {currentYear} Sistema de Facturación Digital. Todos los derechos reservados. Realizado por: Julio Pérez</p>
+            <p>&copy; {currentYear} Factura Digital Inteligente(FADIN). Todos los derechos reservados. Realizado por: Julio Pérez</p>
         </footer>
     );
 };

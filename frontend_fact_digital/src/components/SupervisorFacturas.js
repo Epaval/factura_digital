@@ -50,7 +50,7 @@ function SupervisorFacturas() {
       <div className="card-header bg-dark text-white d-flex justify-content-between align-items-center">
         <h5 className="mb-0">
           <i className="bi bi-receipt me-2"></i>
-          Historial de Facturas (Supervisor)
+          Historial de Facturas
         </h5>
       </div>
 

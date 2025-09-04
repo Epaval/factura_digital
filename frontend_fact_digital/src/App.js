@@ -19,6 +19,7 @@ import BuscarFacturasPorCliente from "./components/BuscarFacturasPorCliente";
 import BuscarFacturasPendientes from "./components/BuscarFacturasPendientes";
 import DashboardCajas from "./components/DashboardCajas";
 import SupervisorFacturas from "./components/SupervisorFacturas";
+import AdminDashboard from "./components/AdminDashboard";
 import "./App.css";
 
 function App() {
@@ -27,28 +28,40 @@ function App() {
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [selectedCliente, setSelectedCliente] = useState(null);
   const [mostrarModal, setMostrarModal] = useState(false);
-  const [mostrarModalEditarCliente, setMostrarModalEditarCliente] = useState(false);
+  const [mostrarModalEditarCliente, setMostrarModalEditarCliente] =
+    useState(false);
   const [clienteAEditar, setClienteAEditar] = useState(null);
   const [mensajeModal, setMensajeModal] = useState("");
-  const [mostrarModalNuevoCliente, setMostrarModalNuevoCliente] = useState(false);
-  const [mostrarModalConsultarProductos, setMostrarModalConsultarProductos] = useState(false);
+  const [mostrarModalNuevoCliente, setMostrarModalNuevoCliente] =
+    useState(false);
+  const [mostrarModalConsultarProductos, setMostrarModalConsultarProductos] =
+    useState(false);
   const [dollarRate, setDollarRate] = useState(0);
   const [cargandoTasa, setCargandoTasa] = useState(true);
   const [totalPagado, setTotalPagado] = useState(0);
-  const [mostrarGestionarFacturas, setMostrarGestionarFacturas] = useState(false);
+  const [mostrarGestionarFacturas, setMostrarGestionarFacturas] =
+    useState(false);
   const [mostrarBuscarFacturas, setMostrarBuscarFacturas] = useState(false);
   const [cajaId, setCajaId] = useState(null);
   const [empleado, setEmpleado] = useState(null);
   const [ficha, setFicha] = useState("");
   const [mostrarModalCierre, setMostrarModalCierre] = useState(false);
   const [mostrarDashboard, setMostrarDashboard] = useState(false);
-  const [mostrarFacturasSupervisor, setMostrarFacturasSupervisor] = useState(false);
-  
+  const [mostrarFacturasSupervisor, setMostrarFacturasSupervisor] =
+    useState(false);
 
   const abrirModalNuevoCliente = () => setMostrarModalNuevoCliente(true);
   const cerrarModalNuevoCliente = () => setMostrarModalNuevoCliente(false);
-  const abrirModalConsultarProductos = () =>
-    setMostrarModalConsultarProductos(true);
+  const abrirModalConsultarProductos = () => {
+    if (esSupervisor()) {
+      setMostrarModalConsultarProductos(true);
+    } else {
+      setMensajeModal(
+        "Acceso denegado. Solo admin o supervisor pueden gestionar productos."
+      );
+      setMostrarModal(true);
+    }
+  };
   const cerrarModalConsultarProductos = () =>
     setMostrarModalConsultarProductos(false);
   const abrirModalEditarCliente = (cliente) => {
@@ -56,6 +69,7 @@ function App() {
     setMostrarModalEditarCliente(true);
   };
 
+  const [mostrarAdminDashboard, setMostrarAdminDashboard] = useState(false);
 
   // Verificar rol del usuario
   const esSupervisor = () => {
@@ -67,7 +81,9 @@ function App() {
   const iniciarSesion = async () => {
     if (!ficha.trim()) return;
     try {
-      const res = await axios.get(`http://localhost:5000/empleados/ficha/${ficha}`);
+      const res = await axios.get(
+        `http://localhost:5000/empleados/ficha/${ficha}`
+      );
       const empleadoData = res.data;
       setEmpleado(empleadoData);
 
@@ -94,11 +110,15 @@ function App() {
       await axios.post("http://localhost:5000/cajas/cerrar", {
         caja_id: Number(cajaId),
       });
+
+      // ✅ Limpia todo
       localStorage.removeItem("caja_id");
       localStorage.removeItem("empleado_id");
+      localStorage.removeItem("empleado_data");
       setCajaId(null);
       setEmpleado(null);
       setFicha("");
+
       setMensajeModal("Caja cerrada exitosamente.");
       setMostrarModal(true);
     } catch (err) {
@@ -111,8 +131,38 @@ function App() {
   // Cargar caja desde localStorage
   useEffect(() => {
     const savedCaja = localStorage.getItem("caja_id");
-    if (savedCaja) {
-      setCajaId(Number(savedCaja));
+    const savedEmpleado = localStorage.getItem("empleado_id");
+
+    if (savedCaja && savedEmpleado) {
+      // ✅ Verificar si la caja sigue ocupada
+      axios
+        .get(`http://localhost:5000/cajas/disponibles`)
+        .then((res) => {
+          const cajasDisponibles = res.data.map((c) => c.id);
+          const cajaIdNum = Number(savedCaja);
+
+          if (cajasDisponibles.includes(cajaIdNum)) {
+            // ❌ La caja ya no está ocupada
+            localStorage.removeItem("caja_id");
+            localStorage.removeItem("empleado_id");
+            setCajaId(null);
+            setEmpleado(null);
+            setMensajeModal(
+              "La caja fue cerrada en otro dispositivo o sesión."
+            );
+            setMostrarModal(true);
+          } else {
+            // ✅ La caja sigue ocupada, restablecer estado
+            setCajaId(cajaIdNum);
+            setEmpleado(JSON.parse(localStorage.getItem("empleado_data")));
+          }
+        })
+        .catch((err) => {
+          console.error("Error al verificar estado de caja:", err);
+          // Por seguridad, limpia el estado
+          localStorage.removeItem("caja_id");
+          localStorage.removeItem("empleado_id");
+        });
     }
   }, []);
 
@@ -141,7 +191,9 @@ function App() {
     if (!cajaId) return;
     const cargarTasa = async () => {
       try {
-        const res = await axios.get("https://ve.dolarapi.com/v1/dolares/oficial");
+        const res = await axios.get(
+          "https://ve.dolarapi.com/v1/dolares/oficial"
+        );
         setDollarRate(res.data.promedio);
       } catch (error) {
         setMensajeModal("Tasa no disponible. Usando 30.");
@@ -152,29 +204,6 @@ function App() {
     };
     cargarTasa();
   }, [cajaId]);
-
-  /* Recargar el último número de factura y control
-  const cargarUltimosNumeros = useCallback(async () => {
-    try {
-      const res = await axios.get("http://localhost:5000/facturas/ultimo-numero");
-      const { ultimoNumeroFactura = 0, ultimoNumeroControl = "00-000000" } = res.data;
-      
-      const siguienteControl = ultimoNumeroControl === "00-000000"
-        ? "00-000001"
-        : ultimoNumeroControl;
-
-      setSiguienteNumeroFactura(ultimoNumeroFactura + 1);
-      setSiguienteNumeroControl(siguienteControl);
-    } catch (error) {
-      console.error("Error al cargar números:", error);
-      // Fallback seguro
-      setSiguienteNumeroFactura(prev => prev + 1);
-      setSiguienteNumeroControl(prev => {
-        const num = parseInt(prev.split("-")[1], 10) + 1;
-        return `00-${String(num).padStart(6, "0")}`;
-      });
-    }
-  }, []);*/
 
   // Manejo de productos y clientes
   const handleAddProduct = useCallback((producto) => {
@@ -283,7 +312,9 @@ function App() {
         total,
       });
 
-      mostrarMensaje(`Factura pendiente guardada N°: ${res.data.numero_factura}`);
+      mostrarMensaje(
+        `Factura pendiente guardada N°: ${res.data.numero_factura}`
+      );
       setSelectedCliente(null);
       setSelectedProducts([]);
       setMostrarBuscarFacturas(false);
@@ -306,7 +337,10 @@ function App() {
   // Guardar cliente editado
   const guardarClienteEditado = (clienteActualizado) => {
     axios
-      .put(`http://localhost:5000/clientes/${clienteActualizado.id}`, clienteActualizado)
+      .put(
+        `http://localhost:5000/clientes/${clienteActualizado.id}`,
+        clienteActualizado
+      )
       .then((res) => {
         setClientes((prev) =>
           prev.map((c) => (c.id === clienteActualizado.id ? res.data : c))
@@ -320,7 +354,10 @@ function App() {
   // Actualizar producto
   const actualizarProducto = (productoActualizado) => {
     axios
-      .put(`http://localhost:5000/productos/${productoActualizado.id}`, productoActualizado)
+      .put(`http://localhost:5000/productos/${productoActualizado.id}`, {
+        ...productoActualizado,
+        rol: empleado.rol, // ✅ Envía el rol
+      })
       .then((res) => {
         setProductos((prev) =>
           prev.map((p) => (p.id === productoActualizado.id ? res.data : p))
@@ -333,7 +370,10 @@ function App() {
   // Agregar producto
   const agregarProducto = (nuevoProducto) => {
     axios
-      .post("http://localhost:5000/productos", nuevoProducto)
+      .post("http://localhost:5000/productos", {
+        ...nuevoProducto,
+        rol: empleado.rol, // ✅ Envía el rol del empleado actual
+      })
       .then((res) => {
         setProductos((prev) => [...prev, res.data]);
         mostrarMensaje("Producto agregado.");
@@ -374,8 +414,13 @@ function App() {
         onHistorialFacturas={() => setMostrarGestionarFacturas(true)}
         onBuscarFacturas={() => setMostrarBuscarFacturas(true)}
         onVerDashboard={() => setMostrarDashboard(true)}
-        onVerTodasFacturas={() => esSupervisor() && setMostrarFacturasSupervisor(true)}
-        esSupervisor={esSupervisor()}
+        onVerTodasFacturas={() =>
+          esSupervisor() && setMostrarFacturasSupervisor(true)
+        }
+        onVerDashboardAdmin={() =>
+          esSupervisor() && setMostrarAdminDashboard(true)
+        } // ✅ Nuevo
+        esSupervisor={esSupervisor}
       />
 
       <main className="main-content container mt-5">
@@ -436,43 +481,58 @@ function App() {
                       {ficha.trim() ? "Iniciar Sesión" : "Ingrese su ficha"}
                     </button>
                   </>
+                ) : // ✅ Cajero: mostrar SeleccionarCaja
+                esSupervisor() ? (
+                  (() => {
+                    setTimeout(() => setMostrarDashboard(true), 100);
+                    return (
+                      <div className="text-center">
+                        <div
+                          className="spinner-border text-primary mb-3"
+                          role="status"
+                        />
+                        <p>Accediendo al dashboard del supervisor...</p>
+                      </div>
+                    );
+                  })()
                 ) : (
-                  // ✅ Cajero: mostrar SeleccionarCaja
-                  esSupervisor() ? (
-                    (() => {
-                      setTimeout(() => setMostrarDashboard(true), 100);
-                      return (
-                        <div className="text-center">
-                          <div
-                            className="spinner-border text-primary mb-3"
-                            role="status"
-                          />
-                          <p>Accediendo al dashboard del supervisor...</p>
-                        </div>
+                  <SeleccionarCaja
+                    empleado={empleado}
+                    onCajaAbierta={(emp, caja) => {
+                      setEmpleado(emp);
+                      setCajaId(caja);
+                      localStorage.setItem("caja_id", caja);
+                      localStorage.setItem("empleado_id", emp.id);
+                      localStorage.setItem(
+                        "empleado_data",
+                        JSON.stringify(emp)
                       );
-                    })()
-                  ) : (
-                    <SeleccionarCaja
-                      empleado={empleado}
-                      onCajaAbierta={(emp, caja) => {
-                        setEmpleado(emp);
-                        setCajaId(caja);
-                      }}
-                    />
-                  )
+                    }}
+                  />
                 )}
               </div>
 
               {/* Footer opcional */}
               <div
-                className="card-footer bg-light text-center small text-muted"
-                style={{
-                  borderBottomLeftRadius: "16px",
-                  borderBottomRightRadius: "16px",
-                }}
-              >
-                Sistema J&P TECH v1.0
-              </div>
+  className="card-footer bg-light text-center p-2"
+  style={{
+    borderBottomLeftRadius: "16px",
+    borderBottomRightRadius: "16px",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+  }}
+>
+  <img
+    src="/fadin-logo.png"
+    alt="FADIN - Facturación Digital Inteligente"
+    style={{
+      width: "70px", // Ajusta según el tamaño deseado
+      height: "auto",
+      maxWidth: "50%",
+    }}
+  />
+</div>
             </div>
           </div>
         ) : (
@@ -482,7 +542,8 @@ function App() {
               <>
                 <div className="alert alert-info d-flex justify-content-between align-items-center mb-4">
                   <div>
-                    <strong>Caja {cajaId}</strong> - {empleado?.nombre} {empleado?.apellido}
+                    <strong>Caja {cajaId}</strong> - {empleado?.nombre}{" "}
+                    {empleado?.apellido}
                   </div>
                   <button
                     className="btn btn-danger btn-sm"
@@ -639,6 +700,21 @@ function App() {
               </div>
             )}
 
+            {/* Dashboard Admin */}
+            {mostrarAdminDashboard && esSupervisor() && (
+              <div className="mt-4">
+                <div className="d-flex justify-content-between align-items-center mb-4">
+                  <h4>Dashboard de Administración</h4>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => setMostrarAdminDashboard(false)}
+                  >
+                    ← Volver
+                  </button>
+                </div>
+                <AdminDashboard empleado={empleado} />
+              </div>
+            )}
             {/* Todas las Facturas (Supervisor) */}
             {mostrarFacturasSupervisor && esSupervisor() && (
               <div className="mt-4">
@@ -679,13 +755,16 @@ function App() {
           onGuardar={guardarNuevoCliente}
         />
       )}
-      <ModalConsultarProductos
-        mostrar={mostrarModalConsultarProductos}
-        onCerrar={cerrarModalConsultarProductos}
-        productos={productos}
-        onActualizarProducto={actualizarProducto}
-        onAgregarProducto={agregarProducto}
-      />
+      {/* Modal de Consultar Productos - solo para admin/supervisor */}
+      {mostrarModalConsultarProductos && esSupervisor() && (
+        <ModalConsultarProductos
+          mostrar={mostrarModalConsultarProductos}
+          onCerrar={cerrarModalConsultarProductos}
+          productos={productos}
+          onActualizarProducto={actualizarProducto}
+          onAgregarProducto={agregarProducto}
+        />
+      )}
       <ModalCierreCaja
         show={mostrarModalCierre}
         onClose={() => setMostrarModalCierre(false)}
