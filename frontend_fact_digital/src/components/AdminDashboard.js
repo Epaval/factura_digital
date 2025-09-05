@@ -2,13 +2,9 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { Pie } from "react-chartjs-2";
-import {
-  Chart as ChartJS,
-  ArcElement,
-  Tooltip,
-  Legend,
-} from "chart.js";
+import { Chart as ChartJS, ArcElement, Tooltip, Legend } from "chart.js";
 import "./AdminDashboard.css";
+import ActualizarPreciosModal from "./ActualizarPreciosModal"; // ✅ Importa el modal
 
 // Registrar componentes de Chart.js
 ChartJS.register(ArcElement, Tooltip, Legend);
@@ -17,11 +13,31 @@ function AdminDashboard({ empleado }) {
   const [reportes, setReportes] = useState(null);
   const [cargando, setCargando] = useState(true);
   const [filtroCliente, setFiltroCliente] = useState("");
+  
+  // ✅ Estado para el modal de actualización de precios
+  const [mostrarModalActualizarPrecios, setMostrarModalActualizarPrecios] = useState(false);
 
   // Función segura para formatear números
   const formatNumber = (value) => {
     const num = parseFloat(value) || 0;
     return num.toFixed(2);
+  };
+
+  // ✅ Función para manejar la actualización de precios
+  const handleActualizarPrecios = async ({ porcentaje, tipo }) => {
+    try {
+      const res = await axios.post("http://localhost:5000/productos/actualizar-precios", {
+        porcentaje,
+        tipo,
+        rol: empleado.rol,
+      });
+
+      alert(res.data.mensaje);
+      setMostrarModalActualizarPrecios(false);
+    } catch (err) {
+      const mensaje = err.response?.data?.message || "Error al actualizar precios.";
+      alert(mensaje);
+    }
   };
 
   useEffect(() => {
@@ -79,12 +95,12 @@ function AdminDashboard({ empleado }) {
     );
   }
 
-  // Datos para el gráfico de torta
+  // ✅ Datos para el gráfico de torta (CORREGIDO: data en minúscula)
   const dataChart = {
-    labels: reportes.pagosPorTipo.map(p => p.nombre),
+    labels: reportes.pagosPorTipo.map((p) => p.nombre),
     datasets: [
       {
-        data: reportes.pagosPorTipo.map(p => parseFloat(p.total)),
+        data: reportes.pagosPorTipo.map((p) => parseFloat(p.total)), // ✅ data, no Data
         backgroundColor: [
           "#4CAF50", // Efectivo
           "#2196F3", // Transferencia
@@ -102,18 +118,18 @@ function AdminDashboard({ empleado }) {
     responsive: true,
     plugins: {
       legend: {
-        position: 'top',
+        position: "top",
       },
       tooltip: {
         callbacks: {
           label: (context) => {
-            const label = context.label || '';
+            const label = context.label || "";
             const value = context.raw || 0;
             return `${label}: Bs.${formatNumber(value)}`;
-          }
-        }
-      }
-    }
+          },
+        },
+      },
+    },
   };
 
   return (
@@ -121,10 +137,26 @@ function AdminDashboard({ empleado }) {
       <div className="d-flex justify-content-between align-items-center mb-4">
         <h2>📊 Dashboard de Administración</h2>
         <div className="text-end">
-          <div><strong>{empleado?.nombre} {empleado?.apellido}</strong></div>
+          <div>
+            <strong>
+              {empleado?.nombre} {empleado?.apellido}
+            </strong>
+          </div>
           <small>Rol: {empleado?.rol}</small>
         </div>
       </div>
+
+      {/* Botón: Actualizar Precios (solo para admin) */}
+      {empleado?.rol === "admin" && (
+        <div className="mb-4 text-center">
+          <button
+            className="btn btn-danger btn-lg px-4"
+            onClick={() => setMostrarModalActualizarPrecios(true)}
+          >
+            💸 Actualizar Todos los Precios
+          </button>
+        </div>
+      )}
 
       {/* Resumen de facturación */}
       <div className="row mb-4 g-3">
@@ -168,7 +200,9 @@ function AdminDashboard({ empleado }) {
           <div className="card bg-warning bg-opacity-10 border-warning h-100 shadow-sm">
             <div className="card-body">
               <h5>📈 Impuestos Recaudados (IVA 16%)</h5>
-              <h3 className="text-warning mb-0">Bs.{formatNumber(reportes.impuestos)}</h3>
+              <h3 className="text-warning mb-0">
+                Bs.{formatNumber(reportes.impuestos)}
+              </h3>
             </div>
           </div>
         </div>
@@ -186,7 +220,9 @@ function AdminDashboard({ empleado }) {
               {reportes.pagosPorTipo.length > 0 ? (
                 <Pie data={dataChart} options={opcionesChart} />
               ) : (
-                <p className="text-muted text-center mb-0">No hay pagos registrados.</p>
+                <p className="text-muted text-center mb-0">
+                  No hay pagos registrados.
+                </p>
               )}
             </div>
           </div>
@@ -220,16 +256,23 @@ function AdminDashboard({ empleado }) {
                   </thead>
                   <tbody>
                     {reportes.comprasPorCliente
-                      .filter(cliente =>
-                        cliente.nombre.toLowerCase().includes(filtroCliente.toLowerCase()) ||
-                        cliente.numero_rif.includes(filtroCliente) ||
-                        `${cliente.tipo_rif}-${cliente.numero_rif}`.includes(filtroCliente)
+                      .filter(
+                        (cliente) =>
+                          cliente.nombre
+                            .toLowerCase()
+                            .includes(filtroCliente.toLowerCase()) ||
+                          cliente.numero_rif.includes(filtroCliente) ||
+                          `${cliente.tipo_rif}-${cliente.numero_rif}`.includes(
+                            filtroCliente
+                          )
                       )
-                      .slice(0, 8) // Mostrar solo los primeros 8
+                      .slice(0, 8)
                       .map((c) => (
                         <tr key={c.id}>
                           <td>{c.nombre}</td>
-                          <td>{c.tipo_rif}-{c.numero_rif}</td>
+                          <td>
+                            {c.tipo_rif}-{c.numero_rif}
+                          </td>
                           <td>Bs.{formatNumber(c.total_comprado)}</td>
                           <td>{c.total_facturas}</td>
                         </tr>
@@ -267,7 +310,9 @@ function AdminDashboard({ empleado }) {
                           <td>{p.descripcion}</td>
                           <td>{p.codigo}</td>
                           <td>{p.cantidad_vendida}</td>
-                          <td><strong>Bs.{formatNumber(p.ingreso_total)}</strong></td>
+                          <td>
+                            <strong>Bs.{formatNumber(p.ingreso_total)}</strong>
+                          </td>
                         </tr>
                       ))
                     ) : (
@@ -312,9 +357,13 @@ function AdminDashboard({ empleado }) {
                           <td>{f.numero_factura}</td>
                           <td>{f.numero_control}</td>
                           <td>{f.cliente_nombre}</td>
-                          <td>{f.tipo_rif}-{f.numero_rif}</td>
+                          <td>
+                            {f.tipo_rif}-{f.numero_rif}
+                          </td>
                           <td>{new Date(f.fecha).toLocaleDateString()}</td>
-                          <td><strong>Bs.{formatNumber(f.total)}</strong></td>
+                          <td>
+                            <strong>Bs.{formatNumber(f.total)}</strong>
+                          </td>
                         </tr>
                       ))
                     ) : (
@@ -353,19 +402,33 @@ function AdminDashboard({ empleado }) {
                     {reportes.facturacionPorEmpleado.map((emp, index) => (
                       <tr key={emp.nombre}>
                         <td>{index + 1}</td>
-                        <td>{emp.nombre} {emp.apellido}</td>
-                        <td><strong>Bs.{formatNumber(emp.total)}</strong></td>
+                        <td>
+                          {emp.nombre} {emp.apellido}
+                        </td>
+                        <td>
+                          <strong>Bs.{formatNumber(emp.total)}</strong>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               ) : (
-                <p className="text-muted text-center mb-0">No hay empleados con facturación registrada.</p>
+                <p className="text-muted text-center mb-0">
+                  No hay empleados con facturación registrada.
+                </p>
               )}
             </div>
           </div>
         </div>
       </div>
+
+      {/* Modal de Actualización de Precios */}
+      {mostrarModalActualizarPrecios && (
+        <ActualizarPreciosModal
+          onClose={() => setMostrarModalActualizarPrecios(false)}
+          onActualizar={handleActualizarPrecios}
+        />
+      )}
     </div>
   );
 }

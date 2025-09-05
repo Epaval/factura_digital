@@ -5,7 +5,7 @@ import axios from "axios";
 function FormularioPagos({
   totalFactura,
   dollarRate = 30,
-  onGenerarFactura,
+  onGenerarFactura, // Esta función ahora será un wrapper
   cajaId,
   selectedCliente,
   selectedProducts,
@@ -44,7 +44,7 @@ function FormularioPagos({
     setPago({ ...pago, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
     setError("");
 
@@ -77,14 +77,12 @@ function FormularioPagos({
         ? montoIngresado * dollarRate
         : montoIngresado;
 
-    // Actualizar total pagado
     setTotalPagado((prev) => prev + montoEnBs);
 
-    // Agregar pago al historial visual
     setPagos((prev) => [
       ...prev,
       {
-        id: Date.now(), // temporal
+        id: Date.now(),
         metodo_pago: metodo.nombre,
         monto: montoEnBs,
         referencia: pago.referencia,
@@ -92,7 +90,6 @@ function FormularioPagos({
       },
     ]);
 
-    // Limpiar formulario
     setPago({ metodo_pago_id: "", monto: "", referencia: "" });
   };
 
@@ -106,7 +103,7 @@ function FormularioPagos({
   const esVuelto = diferencia > 0;
   const puedeGenerarFactura = totalPagado >= totalFactura - 0.01;
 
-  // Disparar generación de factura
+  // ✅ Nueva función: manejarGenerarFactura con manejo de errores visuales
   const manejarGenerarFactura = async () => {
     if (!puedeGenerarFactura) return;
 
@@ -117,16 +114,48 @@ function FormularioPagos({
         dollarRate,
         caja_id: cajaId,
         pagos: pagos.map((p) => ({
-          metodo_pago_id: metodosPago.find((m) => m.nombre === p.metodo_pago)
-            ?.id,
+          metodo_pago_id: metodosPago.find((m) => m.nombre === p.metodo_pago)?.id,
           monto: p.monto,
           referencia: p.referencia || null,
         })),
       };
 
-      await onGenerarFactura(facturaData); // onGenerarFactura ahora recibe datos
+      await onGenerarFactura(facturaData); // Aquí se llama a la función del App.js
+
     } catch (err) {
-      setError("Error al generar la factura.");
+      if (err.response?.status === 400 && err.response.data.productosSinStock) {
+        const productosSinStock = err.response.data.productosSinStock;
+
+        // ✅ Mensaje visual con lista de productos
+        const mensajeJSX = (
+          <div>
+            <h5 className="text-danger mb-3">
+              <i className="bi bi-exclamation-triangle-fill me-2"></i>
+              ❌ Stock insuficiente
+            </h5>
+            <p><strong>No se puede generar la factura. Los siguientes productos no tienen suficiente inventario:</strong></p>
+            <ul className="list-group mb-3">
+              {productosSinStock.map((p) => (
+                <li key={p.id} className="list-group-item d-flex justify-content-between align-items-center bg-light">
+                  <span><strong>{p.descripcion}</strong></span>
+                  <span className="badge bg-danger rounded-pill">
+                    Disponible: {p.disponible} | Solicitado: {p.solicitado}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-muted small">
+              Por favor, ajuste las cantidades o elija otros productos.
+            </p>
+          </div>
+        );
+
+        // ✅ Asumimos que `onGenerarFactura` es en realidad `mostrarMensaje`
+        // Si no, asegúrate de pasar `mostrarMensaje` a este componente
+        window.mostrarMensajeGlobal?.(mensajeJSX);
+      } else {
+        setError("Error al generar la factura. Verifique los datos.");
+      }
     }
   };
 

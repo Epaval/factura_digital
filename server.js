@@ -331,17 +331,54 @@ app.post("/facturas/generar-pdf", async (req, res) => {
     connection = await promiseDb.getConnection();
     await connection.beginTransaction();
 
+    // ✅ 1. Verificar stock disponible (solo si es nueva factura o pendiente)
+    const productosIds = productos.map(p => p.id);
+    const [stockRows] = await connection.query(
+      "SELECT id, cantidad, descripcion FROM productos WHERE id IN (?) FOR UPDATE",
+      [productosIds]
+    );
+
+    const stockMap = {};
+    stockRows.forEach(row => {
+      stockMap[row.id] = { cantidad: row.cantidad, descripcion: row.descripcion };
+    });
+
+    // ✅ 2. Validar stock
+    const productosSinStock = [];
+    for (const producto of productos) {
+      const disponible = stockMap[producto.id]?.cantidad || 0;
+      const solicitado = producto.cantidadSeleccionada;
+      if (solicitado > disponible) {
+        productosSinStock.push({
+          id: producto.id,
+          descripcion: stockMap[producto.id]?.descripcion || "Producto desconocido",
+          disponible,
+          solicitado
+        });
+      }
+    }
+
+    if (productosSinStock.length > 0) {
+      //console.log("Productos sin stock:", productosSinStock);
+      await connection.rollback();
+      return res.status(400).json({
+        message: "Stock insuficiente para algunos productos.",
+        productosSinStock
+      });
+    }
+
     let nuevoFactura, numeroControl, facturaId, esNueva = true;
 
     if (facturaIdExistente) {
-      // ✅ Es una factura pendiente que se está pagando
+      // ✅ Recuperar factura pendiente
       const [facturaRows] = await connection.query(
         "SELECT id, numero_factura, numero_control FROM facturas WHERE id = ? FOR UPDATE",
         [facturaIdExistente]
       );
 
       if (facturaRows.length === 0 || facturaRows[0].estado !== 'pendiente') {
-        throw new Error("Factura no encontrada o ya pagada.");
+        await connection.rollback();
+        return res.status(400).json({ message: "Factura no encontrada o ya pagada." });
       }
 
       facturaId = facturaRows[0].id;
@@ -349,13 +386,13 @@ app.post("/facturas/generar-pdf", async (req, res) => {
       numeroControl = facturaRows[0].numero_control;
       esNueva = false;
 
-      // ✅ Actualizar estado
+      // ✅ Cambiar estado a 'pagado'
       await connection.query(
         "UPDATE facturas SET estado = 'pagado', caja_id = ? WHERE id = ?",
         [caja_id, facturaId]
       );
     } else {
-      // ✅ Es una nueva factura: asignar número
+      // ✅ Nueva factura: obtener números
       const [rows] = await connection.query("SELECT ultimo_numero_factura, ultimo_numero_control FROM contadores WHERE id = 1 FOR UPDATE");
       
       if (rows.length === 0) {
@@ -375,15 +412,14 @@ app.post("/facturas/generar-pdf", async (req, res) => {
       const IVA = totalSinIVA * 0.16;
       const totalConIVA = totalSinIVA + IVA;
 
-      // 🔐 Insertar nueva factura
+      // 🔐 Insertar factura
       const [result] = await connection.query(
         "INSERT INTO facturas (numero_factura, numero_control, cliente_id, fecha, total, estado, caja_id) VALUES (?, ?, ?, ?, ?, 'pagado', ?)",
         [nuevoFactura, numeroControl, cliente.id, fecha, totalConIVA, caja_id]
       );
-
       facturaId = result.insertId;
 
-      // 🔐 Insertar detalles
+      // 🔐 Insertar detalles (esto activará el trigger)
       if (productos.length > 0) {
         const detallesValues = productos.map(p => [
           facturaId,
@@ -412,6 +448,9 @@ app.post("/facturas/generar-pdf", async (req, res) => {
         [nuevoFactura, numeroControl]
       );
     }
+
+    // ✅ No descontar aquí → lo hace el trigger en factura_detalle
+    // ✅ ¡Evita el doble descuento!
 
     await connection.commit();
     connection.release();
@@ -672,6 +711,7 @@ app.get("/cajas/estado", async (req, res) => {
     }));
 
     res.json(estadoCajas);
+    //console.log(estadoCajas);
   } catch (error) {
     console.error("Error al obtener estado de cajas:", error);
     res.status(500).json({ message: "Error al cargar estado de cajas." });
@@ -1124,6 +1164,152 @@ app.put("/productos/:id", async (req, res) => {
     });
   }
 });
+
+// Reporte de ventas por producto
+app.get("/reportes/ventas-producto", async (req, res) => {
+  try {
+    const [rows] = await promiseDb.query(`
+      SELECT 
+        p.id AS producto_id,
+        p.codigo,
+        p.descripcion,
+        COALESCE(SUM(fd.cantidad), 0) AS cantidad_vendida,
+        COALESCE(SUM(fd.cantidad * fd.precio), 0) AS ingreso_total
+      FROM productos p
+      LEFT JOIN factura_detalle fd ON p.id = fd.producto_id
+      GROUP BY p.id, p.codigo, p.descripcion
+      ORDER BY cantidad_vendida DESC
+    `);
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ message: "Error al cargar ventas." });
+  }
+});
+
+
+// === RUTA: Actualizar todos los precios (solo admin) ===
+app.post("/productos/actualizar-precios", async (req, res) => {
+  const { porcentaje, tipo, rol } = req.body;
+
+  // ✅ Validar rol
+  if (!["admin"].includes(rol?.trim().toLowerCase())) {
+    return res.status(403).json({ message: "Acceso denegado. Solo el admin puede realizar esta acción." });
+  }
+
+  // ✅ Validar datos
+  const numPorcentaje = parseFloat(porcentaje);
+  if (isNaN(numPorcentaje) || numPorcentaje < 0 || numPorcentaje > 100) {
+    return res.status(400).json({ message: "Porcentaje inválido. Debe estar entre 0 y 100." });
+  }
+
+  if (!["aumentar", "disminuir"].includes(tipo)) {
+    return res.status(400).json({ message: "Tipo inválido. Usa 'aumentar' o 'disminuir'." });
+  }
+
+  let connection;
+  try {
+    connection = await promiseDb.getConnection();
+    await connection.beginTransaction();
+
+    // ✅ Obtener todos los productos antes de actualizar
+    const [productos] = await connection.query("SELECT id, precio FROM productos");
+    if (productos.length === 0) {
+      await connection.commit();
+      return res.json({ actualizados: 0, mensaje: "No hay productos para actualizar." });
+    }
+
+    const factor = 1 + (numPorcentaje / 100);
+    const query =
+      tipo === "aumentar"
+        ? "UPDATE productos SET precio = precio * ?"
+        : "UPDATE productos SET precio = precio / ?";
+
+    await connection.query(query, [factor]);
+
+    await connection.commit();
+    connection.release();
+
+    res.json({
+      actualizados: productos.length,
+      porcentaje: numPorcentaje,
+      tipo,
+      mensaje: `Precios ${tipo === "aumentar" ? "aumentados" : "disminuidos"} en ${numPorcentaje}%. ${productos.length} productos actualizados.`
+    });
+  } catch (err) {
+    if (connection) await connection.rollback();
+    console.error("Error al actualizar precios:", err);
+    res.status(500).json({ message: "Error al actualizar precios." });
+  }
+});
+
+// === RUTA: Anular factura y devolver inventario ===
+app.put("/facturas/:id/anular", async (req, res) => {
+  const { id } = req.params;
+  let connection;
+
+  try {
+    connection = await promiseDb.getConnection();
+    await connection.beginTransaction();
+
+    // 1. Verificar que la factura exista y su estado actual
+    const [facturaRows] = await connection.query(
+      "SELECT id, estado FROM facturas WHERE id = ? FOR UPDATE",
+      [id]
+    );
+
+    if (facturaRows.length === 0) {
+      return res.status(404).json({ message: "Factura no encontrada." });
+    }
+
+    const factura = facturaRows[0];
+    if (factura.estado === "sin pago") {
+      return res.status(400).json({ message: "La factura ya está anulada." });
+    }
+
+    // 2. Obtener los productos de la factura
+    const [detalles] = await connection.query(
+      "SELECT producto_id, cantidad FROM factura_detalle WHERE factura_id = ?",
+      [id]
+    );
+
+    if (detalles.length === 0) {
+      return res.status(400).json({ message: "No hay productos en esta factura." });
+    }
+
+    // 3. Devolver el inventario (sumar cantidad a productos)
+    for (const detalle of detalles) {
+      await connection.query(
+        "UPDATE productos SET cantidad = cantidad + ? WHERE id = ?",
+        [detalle.cantidad, detalle.producto_id]
+      );
+    }
+
+    // 4. Actualizar el estado de la factura
+    await connection.query(
+      "UPDATE facturas SET estado = 'sin pago' WHERE id = ?",
+      [id]
+    );
+
+    // 5. Confirmar transacción
+    await connection.commit();
+
+    res.json({
+      message: "Factura anulada exitosamente y inventario devuelto.",
+      factura_id: id,
+    });
+  } catch (error) {
+    if (connection) {
+      await connection.rollback();
+    }
+    console.error("Error al anular factura:", error);
+    res.status(500).json({ message: "Error interno del servidor." });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
+  }
+});
+
 
 
 

@@ -1,0 +1,37 @@
+/* src/components/Inventario.css */
+.inventario-container {
+  font-family: "Segoe UI", sans-serif;
+}
+
+.table th,
+.table td {
+  vertical-align: middle;
+  text-align: center;
+}
+
+.table td:first-child,
+.table th:first-child {
+  text-align: left;
+}
+
+.table td.text-end,
+.table th.text-end {
+  text-align: right;
+}
+
+.heatmap-legend {
+  font-size: 0.9rem;
+}
+
+.legend-box {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 1px solid #ccc;
+}
+
+/* Ajuste de colores */
+tr td:nth-child(4) {
+  font-weight: bold;
+  transition: background-color 0.3s;
+}

@@ -2,16 +2,20 @@
 import React, { useState } from "react";
 import BcvDollar from "./BcvDollar";
 import {
-  FaHome,
-  FaUsers,
-  FaBox,
-  FaFileInvoice,
-  FaChartBar,
-  FaDatabase,
-  FaUserTie,
-  FaBars,
-  FaTimes,
-} from "react-icons/fa";
+  FiHome,
+  FiUsers,
+  FiPackage,
+  FiFileText,
+  FiBarChart2,
+  FiDatabase,
+  FiTag,
+  FiDollarSign,
+  FiMenu,
+  FiX,
+  FiBox,
+} from "react-icons/fi";
+
+
 
 const Header = ({
   onNuevoCliente,
@@ -20,32 +24,67 @@ const Header = ({
   onVerDashboard,
   onVerTodasFacturas,
   onVerDashboardAdmin,
+  onActualizarPreciosMasivo,
   esSupervisor,
+  onVerInventario,
+  empleado,
 }) => {
   const [menuAbierto, setMenuAbierto] = useState(false);
 
   // Alternar menú en móvil
   const toggleMenu = () => setMenuAbierto(!menuAbierto);
 
+  const [scale, setScale] = useState(1);
+  const [isAnimating, setIsAnimating] = useState(false);
+
+const handleLogoClick = () => {
+    if (isAnimating) return; 
+
+    setScale(1.8); 
+    setIsAnimating(true);
+    
+    setTimeout(() => {
+      setScale(1);
+      setIsAnimating(false);
+    }, 1000); 
+  };
+
+
   return (
-    <header className="bg-primary text-white shadow-sm">
+    <header className="bg-gradient bg-primary text-white shadow-sm">
       <div className="container-fluid">
         {/* Barra superior */}
         <div className="d-flex justify-content-between align-items-center py-3 px-3">
           <div className="d-flex align-items-center">
-            <h1 className="h4 mb-0 d-flex align-items-center">
-              <FaHome className="me-2" />
-              <span>Sistema de Facturación</span>
+            <h1 className="h5 mb-0 d-flex align-items-center">
+               <span className="d-none d-md-inline">FADIN. Facturación Digital Inteligente</span>
+              <span className="d-inline d-md-none">FADIN</span>
+               <img
+                  src="/fadin-logo.png"
+                  alt="FADIN - Facturación Digital Inteligente"
+                  style={{
+                    width: `${50 * scale}px`,
+                    height: "auto",
+                    maxWidth: "50%",
+                    marginLeft: "10px",
+                    cursor: "pointer",
+                    transform: `scale(${scale})`,
+                    transformOrigin: "center",
+                    transition: "transform 0.8s ease-out",
+                  }}
+                  onClick={handleLogoClick}
+                />
+             
             </h1>
           </div>
 
           {/* Botón menú para móvil */}
           <button
-            className="btn btn-outline-light d-md-none"
+            className="btn btn-light btn-sm d-md-none d-flex align-items-center gap-1"
             onClick={toggleMenu}
             aria-label="Toggle menu"
           >
-            {menuAbierto ? <FaTimes size={20} /> : <FaBars size={20} />}
+            {menuAbierto ? <FiX size={18} /> : <FiMenu size={18} />}
           </button>
 
           {/* Tasa BCV - visible en todos los dispositivos */}
@@ -58,73 +97,104 @@ const Header = ({
         <nav
           className={`${
             menuAbierto ? "d-flex" : "d-none"
-          } d-md-flex flex-column flex-md-row justify-content-center align-items-center gap-2 py-2 bg-primary bg-opacity-90 rounded-3 mb-3`}
+          } d-md-flex flex-column flex-md-row justify-content-center align-items-center gap-2 px-3 py-2 rounded-3 mb-3 bg-white bg-opacity-10 backdrop-blur-lg`}
+          style={{ backdropFilter: "blur(10px)" }}
         >
           {/* Acciones generales (cajero) */}
           <div className="d-flex flex-wrap justify-content-center gap-2">
             <button
-              className="btn btn-outline-light btn-sm d-flex align-items-center gap-1"
+              className="btn btn-outline-light btn-sm d-flex align-items-center gap-1 px-3 py-2"
               onClick={onNuevoCliente}
               title="Nuevo Cliente"
             >
-              <FaUsers />{" "}
-              <span className="d-none d-lg-inline">Nuevo Cliente</span>
+              <FiUsers size={16} />
+              <span className="d-none d-sm-inline"> Nuevo Cliente</span>
             </button>
-            {esSupervisor && (
+
+            {esSupervisor() && (
               <button
-                className="btn btn-outline-light btn-sm d-flex align-items-center gap-1"
+                className="btn btn-outline-light btn-sm d-flex align-items-center gap-1 px-3 py-2"
                 onClick={onConsultarProductos}
-                title="Consultar Productos"
+                title="Gestionar Productos"
               >
-                <FaBox /> <span className="d-none d-lg-inline">Productos</span>
+                <FiPackage size={16} />
+                <span className="d-none d-sm-inline"> Productos</span>
               </button>
             )}
+
             <button
-              className="btn btn-outline-light btn-sm d-flex align-items-center gap-1"
+              className="btn btn-outline-light btn-sm d-flex align-items-center gap-1 px-3 py-2"
               onClick={onHistorialFacturas}
               title="Historial de Facturas"
             >
-              <FaFileInvoice />{" "}
-              <span className="d-none d-lg-inline">Historial</span>
+              <FiFileText size={16} />
+              <span className="d-none d-sm-inline"> Historial</span>
             </button>
+
+            {esSupervisor() && (
+              <button
+                className="btn btn-outline-light btn-sm d-flex align-items-center gap-1 px-3 py-2"
+                onClick={onVerInventario}
+                title="Inventario de Productos"
+              >
+                <FiBox size={16} />
+                <span className="d-none d-sm-inline"> Inventario</span>
+              </button>
+            )}
           </div>
 
-          {/* Separador visible en móvil */}
-          {esSupervisor && <div className="w-100 d-md-none"></div>}
+          {/* Separador visual en móvil */}
+          {esSupervisor() && (
+            <div className="w-100 my-1 d-md-none border-top border-light border-opacity-25"></div>
+          )}
 
           {/* Acciones de supervisor/admin */}
-          {esSupervisor && (
+          {esSupervisor() && (
             <div className="d-flex flex-wrap justify-content-center gap-2">
               <button
-                className="btn btn-light btn-sm d-flex align-items-center gap-1"
+                className="btn btn-light btn-sm text-primary d-flex align-items-center gap-1 px-3 py-2"
                 onClick={onVerDashboard}
                 title="Dashboard de Cajas"
               >
-                <FaChartBar />{" "}
-                <span className="d-none d-lg-inline">Dashboard Cajas</span>
+                <FiBarChart2 size={16} />
+                <span className="d-none d-sm-inline"> Dashboard Cajas</span>
               </button>
+
               <button
-                className="btn btn-dark btn-sm d-flex align-items-center gap-1"
+                className="btn btn-light btn-sm text-dark d-flex align-items-center gap-1 px-3 py-2"
                 onClick={onVerDashboardAdmin}
                 title="Dashboard Administrativo"
               >
-                <FaDatabase />{" "}
-                <span className="d-none d-lg-inline">Dashboard Admin</span>
+                <FiDatabase size={16} />
+                <span className="d-none d-sm-inline"> Admin</span>
               </button>
+
               <button
-                className="btn btn-warning btn-sm d-flex align-items-center gap-1 text-dark"
+                className="btn btn-light btn-sm d-flex align-items-center gap-1 px-3 py-2"
                 onClick={onVerTodasFacturas}
                 title="Ver Todas las Facturas"
               >
-                <FaFileInvoice />{" "}
-                <span className="d-none d-lg-inline">Todas las Facturas</span>
+                <FiFileText size={16} />
+                <span className="d-none d-sm-inline"> Todas Facturas</span>
               </button>
+
+              {/* ✅ Actualizar Precios (solo admin) */}
+              {empleado?.rol === "admin" && (
+                <button
+                  className="btn btn-danger btn-sm d-flex align-items-center gap-1 px-3 py-2"
+                  onClick={onActualizarPreciosMasivo}
+                  title="Actualizar precios masivamente"
+                >
+                  <FiTag size={16} />
+                  <span className="d-none d-sm-inline"> Actualizar Precios</span>
+                </button>
+              )}
             </div>
           )}
         </nav>
 
         {/* Tasa BCV en móvil */}
-        <div className="d-flex justify-content-center d-md-none mb-3">
+        <div className="d-flex justify-content-center d-md-none mb-3 px-3">
           <BcvDollar />
         </div>
       </div>

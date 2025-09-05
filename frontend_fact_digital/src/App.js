@@ -20,6 +20,8 @@ import BuscarFacturasPendientes from "./components/BuscarFacturasPendientes";
 import DashboardCajas from "./components/DashboardCajas";
 import SupervisorFacturas from "./components/SupervisorFacturas";
 import AdminDashboard from "./components/AdminDashboard";
+import ActualizarPreciosModal from "./components/ActualizarPreciosModal";
+import Inventario from "./components/Inventario";
 import "./App.css";
 
 function App() {
@@ -49,7 +51,18 @@ function App() {
   const [mostrarDashboard, setMostrarDashboard] = useState(false);
   const [mostrarFacturasSupervisor, setMostrarFacturasSupervisor] =
     useState(false);
+  const [mostrarAdminDashboard, setMostrarAdminDashboard] = useState(false);
+  const [mostrarModalActualizarPrecios, setMostrarModalActualizarPrecios] =
+    useState(false);
+  const [mostrarInventario, setMostrarInventario] = useState(false);
 
+  // Verificar rol del usuario
+  const esSupervisor = () => {
+    const rol = empleado?.rol?.trim().toLowerCase();
+    return rol === "supervisor" || rol === "admin";
+  };
+
+  // Funciones para abrir modales
   const abrirModalNuevoCliente = () => setMostrarModalNuevoCliente(true);
   const cerrarModalNuevoCliente = () => setMostrarModalNuevoCliente(false);
   const abrirModalConsultarProductos = () => {
@@ -69,12 +82,36 @@ function App() {
     setMostrarModalEditarCliente(true);
   };
 
-  const [mostrarAdminDashboard, setMostrarAdminDashboard] = useState(false);
+  // ✅ Función: Abrir modal de actualización masiva de precios (solo admin)
+  const abrirModalActualizarPrecios = () => {
+    if (empleado?.rol === "admin") {
+      setMostrarModalActualizarPrecios(true);
+    } else {
+      setMensajeModal(
+        "Acceso denegado. Solo el administrador puede actualizar precios masivamente."
+      );
+      setMostrarModal(true);
+    }
+  };
 
-  // Verificar rol del usuario
-  const esSupervisor = () => {
-    const rol = empleado?.rol?.trim().toLowerCase();
-    return rol === "supervisor" || rol === "admin";
+  // ✅ Función: Manejar actualización de precios
+  const handleActualizarPrecios = async ({ porcentaje, tipo }) => {
+    try {
+      const res = await axios.post(
+        "http://localhost:5000/productos/actualizar-precios",
+        {
+          porcentaje,
+          tipo,
+          rol: empleado.rol,
+        }
+      );
+      alert(res.data.mensaje);
+      setMostrarModalActualizarPrecios(false);
+    } catch (err) {
+      const mensaje =
+        err.response?.data?.message || "Error al actualizar precios.";
+      alert(mensaje);
+    }
   };
 
   // Iniciar sesión
@@ -90,7 +127,7 @@ function App() {
       const rol = empleadoData.rol?.trim().toLowerCase();
       if (rol === "supervisor" || rol === "admin") {
         setMostrarDashboard(true);
-        setMensajeModal("Bienvenido, Supervisor. Acceso directo al dashboard.");
+        setMensajeModal("Bienvenido.");
         setMostrarModal(true);
       }
     } catch (err) {
@@ -111,7 +148,6 @@ function App() {
         caja_id: Number(cajaId),
       });
 
-      // ✅ Limpia todo
       localStorage.removeItem("caja_id");
       localStorage.removeItem("empleado_id");
       localStorage.removeItem("empleado_data");
@@ -134,7 +170,6 @@ function App() {
     const savedEmpleado = localStorage.getItem("empleado_id");
 
     if (savedCaja && savedEmpleado) {
-      // ✅ Verificar si la caja sigue ocupada
       axios
         .get(`http://localhost:5000/cajas/disponibles`)
         .then((res) => {
@@ -142,7 +177,6 @@ function App() {
           const cajaIdNum = Number(savedCaja);
 
           if (cajasDisponibles.includes(cajaIdNum)) {
-            // ❌ La caja ya no está ocupada
             localStorage.removeItem("caja_id");
             localStorage.removeItem("empleado_id");
             setCajaId(null);
@@ -152,14 +186,12 @@ function App() {
             );
             setMostrarModal(true);
           } else {
-            // ✅ La caja sigue ocupada, restablecer estado
             setCajaId(cajaIdNum);
             setEmpleado(JSON.parse(localStorage.getItem("empleado_data")));
           }
         })
         .catch((err) => {
           console.error("Error al verificar estado de caja:", err);
-          // Por seguridad, limpia el estado
           localStorage.removeItem("caja_id");
           localStorage.removeItem("empleado_id");
         });
@@ -183,10 +215,9 @@ function App() {
       }
     };
     cargarDatos();
-    //cargarUltimosNumeros(); // ✅ Carga números al abrir caja
   }, [cajaId]);
 
-  // Cargar tasa de cambio (corregido: sin espacios)
+  // Cargar tasa de cambio
   useEffect(() => {
     if (!cajaId) return;
     const cargarTasa = async () => {
@@ -259,17 +290,75 @@ function App() {
     }
 
     try {
-      const response = await axios.post(
+      // ✅ 1. Primero, hacer la petición como JSON para capturar errores
+      const responseBlob = await fetch(
         "http://localhost:5000/facturas/generar-pdf",
-        facturaData,
-        { responseType: "blob" }
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(facturaData),
+        }
       );
 
-      const pdfBlob = new Blob([response.data], { type: "application/pdf" });
+      // ✅ 2. Si la respuesta es error, leer como JSON
+      if (!responseBlob.ok) {
+        const errorData = await responseBlob.json().catch(() => ({
+          message: "Error desconocido del servidor.",
+        }));
+
+        if (
+          errorData.productosSinStock &&
+          Array.isArray(errorData.productosSinStock)
+        ) {
+          const mensajeJSX = (
+            <div>
+              <h6 className="text-danger mb-3">
+                <strong>🚫 Producto sin stock</strong>
+              </h6>
+              <p>
+                <strong>No se puede generar la factura:</strong>
+              </p>
+              <ul className="list-group mb-3">
+                {errorData.productosSinStock.map((p) => (
+                  <li
+                    key={p.id}
+                    className="list-group-item d-flex justify-content-between align-items-center bg-light"
+                  >
+                    <span>
+                      <strong>{p.descripcion}</strong>
+                    </span>
+                    <span className="badge bg-danger rounded-pill">
+                      Disponible: {p.disponible} | Solicitado: {p.solicitado}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-muted small">
+                Ajuste la cantidad o elija otro producto.
+              </p>
+            </div>
+          );
+          mostrarMensaje(mensajeJSX);
+        } else {
+          mostrarMensaje(
+            errorData.message || "Error en los datos de la factura."
+          );
+        }
+        return;
+      }
+
+      // ✅ 3. Si es éxito, leer como blob para PDF
+      const pdfBlob = await responseBlob.blob();
       const url = URL.createObjectURL(pdfBlob);
       const link = document.createElement("a");
+      const contentDisposition = responseBlob.headers.get(
+        "Content-Disposition"
+      );
+      const numeroFactura =
+        responseBlob.headers.get("X-Numero-Factura") || "factura";
       link.href = url;
-      const numeroFactura = response.headers["x-numero-factura"] || "factura";
       link.download = `factura_${numeroFactura}.pdf`;
       document.body.appendChild(link);
       link.click();
@@ -279,15 +368,16 @@ function App() {
       setSelectedCliente(null);
       setSelectedProducts([]);
       setTotalPagado(0);
-      //cargarUltimosNumeros(); // ✅ Actualiza números
-      mostrarMensaje("Factura generada y descargada exitosamente.");
+      mostrarMensaje("✅ Factura generada y descargada exitosamente.");
     } catch (error) {
-      if (error.response) {
+      if (error.name === "SyntaxError") {
+        mostrarMensaje("❌ Error de formato en la respuesta del servidor.");
+      } else if (error.message.includes("Failed to fetch")) {
         mostrarMensaje(
-          `Error: ${error.response.data.message || "No se pudo generar."}`
+          "❌ No se pudo conectar al servidor. Verifique que esté corriendo en http://localhost:5000"
         );
       } else {
-        mostrarMensaje("Error de conexión.");
+        mostrarMensaje("❌ Error inesperado: " + error.message);
       }
     }
   };
@@ -356,7 +446,7 @@ function App() {
     axios
       .put(`http://localhost:5000/productos/${productoActualizado.id}`, {
         ...productoActualizado,
-        rol: empleado.rol, // ✅ Envía el rol
+        rol: empleado.rol,
       })
       .then((res) => {
         setProductos((prev) =>
@@ -372,7 +462,7 @@ function App() {
     axios
       .post("http://localhost:5000/productos", {
         ...nuevoProducto,
-        rol: empleado.rol, // ✅ Envía el rol del empleado actual
+        rol: empleado.rol,
       })
       .then((res) => {
         setProductos((prev) => [...prev, res.data]);
@@ -404,6 +494,18 @@ function App() {
     }
   };
 
+  // ✅ Exponer mostrarMensaje globalmente
+  useEffect(() => {
+    window.mostrarMensajeGlobal = (mensaje) => {
+      setMensajeModal(mensaje);
+      setMostrarModal(true);
+    };
+
+    return () => {
+      delete window.mostrarMensajeGlobal;
+    };
+  }, []);
+
   const puedeGenerarFactura = totalPagado >= totalFactura - 0.01;
 
   return (
@@ -419,8 +521,11 @@ function App() {
         }
         onVerDashboardAdmin={() =>
           esSupervisor() && setMostrarAdminDashboard(true)
-        } // ✅ Nuevo
+        }
+        onActualizarPreciosMasivo={abrirModalActualizarPrecios}
+        onVerInventario={() => esSupervisor() && setMostrarInventario(true)}
         esSupervisor={esSupervisor}
+        empleado={empleado}
       />
 
       <main className="main-content container mt-5">
@@ -430,7 +535,6 @@ function App() {
               className="card shadow-lg border-0"
               style={{ maxWidth: "420px", width: "100%", borderRadius: "16px" }}
             >
-              {/* Header con color profesional */}
               <div
                 className="bg-primary text-white text-center py-4 rounded-top"
                 style={{
@@ -447,7 +551,6 @@ function App() {
 
               <div className="card-body p-4">
                 {!empleado ? (
-                  // Formulario: Ingresar ficha
                   <>
                     <p className="text-muted text-center mb-4">
                       Ingrese su número de ficha para continuar
@@ -481,8 +584,7 @@ function App() {
                       {ficha.trim() ? "Iniciar Sesión" : "Ingrese su ficha"}
                     </button>
                   </>
-                ) : // ✅ Cajero: mostrar SeleccionarCaja
-                esSupervisor() ? (
+                ) : esSupervisor() ? (
                   (() => {
                     setTimeout(() => setMostrarDashboard(true), 100);
                     return (
@@ -512,32 +614,30 @@ function App() {
                 )}
               </div>
 
-              {/* Footer opcional */}
               <div
-  className="card-footer bg-light text-center p-2"
-  style={{
-    borderBottomLeftRadius: "16px",
-    borderBottomRightRadius: "16px",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-  }}
->
-  <img
-    src="/fadin-logo.png"
-    alt="FADIN - Facturación Digital Inteligente"
-    style={{
-      width: "70px", // Ajusta según el tamaño deseado
-      height: "auto",
-      maxWidth: "50%",
-    }}
-  />
-</div>
+                className="card-footer bg-light text-center p-2"
+                style={{
+                  borderBottomLeftRadius: "16px",
+                  borderBottomRightRadius: "16px",
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                }}
+              >
+                <img
+                  src="/fadin-logo.png"
+                  alt="FADIN - Facturación Digital Inteligente"
+                  style={{
+                    width: "70px",
+                    height: "auto",
+                    maxWidth: "50%",
+                  }}
+                />
+              </div>
             </div>
           </div>
         ) : (
           <div>
-            {/* Si es cajero con caja abierta */}
             {cajaId && !mostrarDashboard && (
               <>
                 <div className="alert alert-info d-flex justify-content-between align-items-center mb-4">
@@ -622,7 +722,6 @@ function App() {
                     </div>
                   )}
 
-                {/* ✅ Historial de Facturas */}
                 {mostrarGestionarFacturas && (
                   <div className="mt-4">
                     <div className="d-flex justify-content-between align-items-center mb-4">
@@ -640,7 +739,6 @@ function App() {
               </>
             )}
 
-            {/* Mostrar dashboard si está activo */}
             {mostrarDashboard && esSupervisor() && (
               <div className="mt-4">
                 <div className="d-flex justify-content-between align-items-center mb-4">
@@ -652,13 +750,29 @@ function App() {
                       setEmpleado(null);
                       setCajaId(null);
                       setFicha("");
-                      setMensajeModal("Sesión del supervisor cerrada.");
+                      setMensajeModal("Sesión cerrada. Gracias");
                       setMostrarModal(true);
                     }}
                   >
                     🚪 Cerrar Sesión
                   </button>
                 </div>
+
+                {/* Inventario */}
+                {mostrarInventario && esSupervisor() && (
+                  <div className="mt-4">
+                    <div className="d-flex justify-content-between align-items-center mb-4">
+                      <h4>📦 Inventario de Productos</h4>
+                      <button
+                        className="btn btn-secondary"
+                        onClick={() => setMostrarInventario(false)}
+                      >
+                        ← Volver
+                      </button>
+                    </div>
+                    <Inventario />
+                  </div>
+                )}
                 <DashboardCajas
                   empleado={empleado}
                   onCajaCerrada={(cajaIdCerrada) => {
@@ -674,7 +788,6 @@ function App() {
               </div>
             )}
 
-            {/* Facturas Pendientes */}
             {mostrarBuscarFacturas && (
               <div className="mt-4">
                 <div className="d-flex justify-content-between align-items-center mb-4">
@@ -700,7 +813,6 @@ function App() {
               </div>
             )}
 
-            {/* Dashboard Admin */}
             {mostrarAdminDashboard && esSupervisor() && (
               <div className="mt-4">
                 <div className="d-flex justify-content-between align-items-center mb-4">
@@ -715,7 +827,7 @@ function App() {
                 <AdminDashboard empleado={empleado} />
               </div>
             )}
-            {/* Todas las Facturas (Supervisor) */}
+
             {mostrarFacturasSupervisor && esSupervisor() && (
               <div className="mt-4">
                 <div className="d-flex justify-content-between align-items-center mb-4">
@@ -755,7 +867,6 @@ function App() {
           onGuardar={guardarNuevoCliente}
         />
       )}
-      {/* Modal de Consultar Productos - solo para admin/supervisor */}
       {mostrarModalConsultarProductos && esSupervisor() && (
         <ModalConsultarProductos
           mostrar={mostrarModalConsultarProductos}
@@ -763,6 +874,12 @@ function App() {
           productos={productos}
           onActualizarProducto={actualizarProducto}
           onAgregarProducto={agregarProducto}
+        />
+      )}
+      {mostrarModalActualizarPrecios && (
+        <ActualizarPreciosModal
+          onClose={() => setMostrarModalActualizarPrecios(false)}
+          onActualizar={handleActualizarPrecios}
         />
       )}
       <ModalCierreCaja
@@ -777,7 +894,7 @@ function App() {
   );
 }
 
-// Componente para que el cajero seleccione caja después de iniciar sesión
+// Componente SeleccionarCaja
 function SeleccionarCaja({ empleado, onCajaAbierta }) {
   const [cajas, setCajas] = useState([]);
   const [cajaSeleccionada, setCajaSeleccionada] = useState("");
