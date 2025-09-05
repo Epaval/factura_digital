@@ -1246,32 +1246,26 @@ app.post("/productos/actualizar-precios", async (req, res) => {
 app.put("/facturas/:id/anular", async (req, res) => {
   const { id } = req.params;
   let connection;
-
   try {
     connection = await promiseDb.getConnection();
     await connection.beginTransaction();
-
     // 1. Verificar que la factura exista y su estado actual
     const [facturaRows] = await connection.query(
       "SELECT id, estado FROM facturas WHERE id = ? FOR UPDATE",
       [id]
     );
-
     if (facturaRows.length === 0) {
       return res.status(404).json({ message: "Factura no encontrada." });
     }
-
     const factura = facturaRows[0];
     if (factura.estado === "sin pago") {
       return res.status(400).json({ message: "La factura ya está anulada." });
     }
-
     // 2. Obtener los productos de la factura
     const [detalles] = await connection.query(
       "SELECT producto_id, cantidad FROM factura_detalle WHERE factura_id = ?",
       [id]
     );
-
     if (detalles.length === 0) {
       return res.status(400).json({ message: "No hay productos en esta factura." });
     }
@@ -1313,13 +1307,10 @@ app.put("/facturas/:id/anular", async (req, res) => {
 // Ruta /buscar
 app.get("/buscar", async (req, res) => {
   const { q } = req.query;
-
   if (!q || q.trim().length < 2) {
     return res.json([]);
   }
-
   const searchTerm = `%${q.trim()}%`;
-
   try {
     // Buscar productos
     const [productos] = await promiseDb.query(
@@ -1373,6 +1364,61 @@ app.get("/buscar", async (req, res) => {
     res.status(500).json([]);
   }
 });
+
+// Ruta: POST /logs/precio
+app.post("/logs/precio", async (req, res) => {
+  const { empleado_id, empleado_nombre, accion, porcentaje, total_productos_afectados } = req.body;
+
+  try {
+    await promiseDb.query(
+      `INSERT INTO precio_logs 
+       (empleado_id, empleado_nombre, accion, porcentaje, total_productos_afectados) 
+       VALUES (?, ?, ?, ?, ?)`,
+      [empleado_id, empleado_nombre, accion, porcentaje, total_productos_afectados]
+    );
+    res.status(201).json({ message: "Log de precios guardado." });
+  } catch (error) {
+    console.error("Error al guardar log de precios:", error);
+    res.status(500).json({ message: "Error al guardar el registro." });
+  }
+});
+
+// === RUTA: Obtener logs de cambios de precios ===
+app.get("/logs/precio", async (req, res) => {
+  try {
+    const [rows] = await promiseDb.query(`
+      SELECT 
+        id,
+        empleado_id,
+        empleado_nombre,
+        accion,
+        porcentaje,
+        total_productos_afectados,
+        fecha
+      FROM precio_logs
+      ORDER BY fecha DESC
+    `);
+
+    // Formatear fechas y asegurar tipos de datos
+    const logs = rows.map(log => ({
+      ...log,
+      fecha: new Date(log.fecha).toLocaleString('es-VE', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      })
+    }));
+
+    res.json(logs);
+  } catch (error) {
+    console.error("Error al cargar logs de precios:", error);
+    res.status(500).json({ message: "Error al cargar el historial de cambios." });
+  }
+});
+
 
 // ✅ Iniciar servidor
 const startServer = async () => {

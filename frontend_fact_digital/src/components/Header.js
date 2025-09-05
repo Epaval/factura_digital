@@ -38,7 +38,7 @@ const Header = ({
 
   const handleLogoClick = () => {
     if (isAnimating) return;
-    setScale(1.8);
+    setScale(1.5);
     setIsAnimating(true);
     setTimeout(() => {
       setScale(1);
@@ -53,11 +53,16 @@ const Header = ({
         <div className="d-flex flex-column flex-md-row justify-content-between align-items-center py-3 px-3 gap-3">
           {/* Logo y título */}
           <div className="d-flex align-items-center">
-            <h1 className="h5 mb-0 d-flex align-items-center">
-              <span className="d-none d-md-inline">FADIN. Facturación Digital Inteligente</span>
-              <span className="d-inline d-md-none">FADIN</span>
+            <h1
+              className="h5 mb-0 d-flex align-items-center position-relative"
+              style={{ zIndex: 1 }}
+            >
+              <span className="d-none d-md-inline">
+                FacDin. Facturación Digital Inteligente
+              </span>
+              <span className="d-inline d-md-none">FacDin</span>
               <img
-                src="/fadin-logo.png"
+                src="/facdin.png"
                 alt="FADIN - Facturación Digital Inteligente"
                 style={{
                   width: `${50 * scale}px`,
@@ -67,7 +72,10 @@ const Header = ({
                   cursor: "pointer",
                   transform: `scale(${scale})`,
                   transformOrigin: "center",
-                  transition: "transform 0.8s ease-out",
+                  transition: "transform 0.8s ease-out",                  
+                  position: "relative",
+                  zIndex: 2,
+                  pointerEvents: "auto", // Asegura que el clic funcione
                 }}
                 onClick={handleLogoClick}
               />
@@ -76,7 +84,9 @@ const Header = ({
 
           {/* Buscador global (visible en todos los dispositivos) */}
           <div className="flex-fill mx-md-4" style={{ maxWidth: "400px" }}>
-            <BuscadorGlobal onResultados={(resultados) => console.log(resultados)} />
+            <BuscadorGlobal
+              onResultados={(resultados) => console.log(resultados)}
+            />
           </div>
 
           {/* Botón menú móvil y tasa BCV */}
@@ -190,7 +200,10 @@ const Header = ({
                   title="Actualizar precios masivamente"
                 >
                   <FiTag size={16} />
-                  <span className="d-none d-sm-inline"> Actualizar Precios</span>
+                  <span className="d-none d-sm-inline">
+                    {" "}
+                    Actualizar Precios
+                  </span>
                 </button>
               )}
             </div>

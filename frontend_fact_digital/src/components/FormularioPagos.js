@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 
+
 function FormularioPagos({
   totalFactura,
   dollarRate = 30,
@@ -9,6 +10,8 @@ function FormularioPagos({
   cajaId,
   selectedCliente,
   selectedProducts,
+  facturaGenerada,
+  setFacturaGenerada,
 }) {
   const [metodosPago, setMetodosPago] = useState([]);
   const [pago, setPago] = useState({
@@ -103,7 +106,7 @@ function FormularioPagos({
   const esVuelto = diferencia > 0;
   const puedeGenerarFactura = totalPagado >= totalFactura - 0.01;
 
-  // ✅ Nueva función: manejarGenerarFactura con manejo de errores visuales
+  // ✅ manejarGenerarFactura con manejo de errores visuales
   const manejarGenerarFactura = async () => {
     if (!puedeGenerarFactura) return;
 
@@ -114,14 +117,18 @@ function FormularioPagos({
         dollarRate,
         caja_id: cajaId,
         pagos: pagos.map((p) => ({
-          metodo_pago_id: metodosPago.find((m) => m.nombre === p.metodo_pago)?.id,
+          metodo_pago_id: metodosPago.find((m) => m.nombre === p.metodo_pago)
+            ?.id,
           monto: p.monto,
           referencia: p.referencia || null,
         })),
       };
 
-      await onGenerarFactura(facturaData); // Aquí se llama a la función del App.js
+      await onGenerarFactura(facturaData);
 
+      if (facturaGenerada) {
+        window.imprimirTicketDirecto?.(facturaGenerada, selectedProducts);
+      }
     } catch (err) {
       if (err.response?.status === 400 && err.response.data.productosSinStock) {
         const productosSinStock = err.response.data.productosSinStock;
@@ -130,14 +137,24 @@ function FormularioPagos({
         const mensajeJSX = (
           <div>
             <h5 className="text-danger mb-3">
-              <i className="bi bi-exclamation-triangle-fill me-2"></i>
-              ❌ Stock insuficiente
+              <i className="bi bi-exclamation-triangle-fill me-2"></i>❌ Stock
+              insuficiente
             </h5>
-            <p><strong>No se puede generar la factura. Los siguientes productos no tienen suficiente inventario:</strong></p>
+            <p>
+              <strong>
+                No se puede generar la factura. Los siguientes productos no
+                tienen suficiente inventario:
+              </strong>
+            </p>
             <ul className="list-group mb-3">
               {productosSinStock.map((p) => (
-                <li key={p.id} className="list-group-item d-flex justify-content-between align-items-center bg-light">
-                  <span><strong>{p.descripcion}</strong></span>
+                <li
+                  key={p.id}
+                  className="list-group-item d-flex justify-content-between align-items-center bg-light"
+                >
+                  <span>
+                    <strong>{p.descripcion}</strong>
+                  </span>
                   <span className="badge bg-danger rounded-pill">
                     Disponible: {p.disponible} | Solicitado: {p.solicitado}
                   </span>
@@ -350,18 +367,17 @@ function FormularioPagos({
           </div>
         </div>
       )}
-
-      {/* Botón para generar factura */}
       {puedeGenerarFactura && (
-        <div className="text-end mt-4">
-          <button
-            className="btn btn-success btn-lg px-5"
-            onClick={manejarGenerarFactura}
-          >
-            ✅ Generar Factura (PDF)
-          </button>
-        </div>
-      )}
+  <div className="mt-4">
+    <button
+      className="btn btn-success btn-lg"
+      onClick={manejarGenerarFactura}
+    >
+      ✅ Generar Factura
+    </button>
+  </div>
+)}
+      
     </div>
   );
 }

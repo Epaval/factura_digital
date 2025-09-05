@@ -83,6 +83,8 @@ function App() {
     setMostrarModalEditarCliente(true);
   };
 
+  const [facturaGenerada, setFacturaGenerada] = useState(null);
+
   // ✅ Función: Abrir modal de actualización masiva de precios (solo admin)
   const abrirModalActualizarPrecios = () => {
     if (empleado?.rol === "admin") {
@@ -285,103 +287,109 @@ function App() {
 
   // Generar factura
   const generarFactura = async (facturaData) => {
-    if (!selectedCliente || selectedProducts.length === 0) {
-      mostrarMensaje("Seleccione cliente y productos.");
+  if (!selectedCliente || selectedProducts.length === 0) {
+    mostrarMensaje("Seleccione cliente y productos.");
+    return;
+  }
+
+  try {
+    // ✅ 1. Hacer la petición como JSON para capturar errores
+    const response = await fetch("http://localhost:5000/facturas/generar-pdf", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(facturaData),
+    });
+
+    // ✅ 2. Si hay error, leer como JSON y mostrar detalles
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({
+        message: "Error desconocido del servidor.",
+      }));
+
+      if (errorData.productosSinStock && Array.isArray(errorData.productosSinStock)) {
+        const mensajeJSX = (
+          <div>
+            <h6 className="text-danger mb-3">
+              <strong>🚫 Producto sin stock</strong>
+            </h6>
+            <p><strong>No se puede generar la factura:</strong></p>
+            <ul className="list-group mb-3">
+              {errorData.productosSinStock.map((p) => (
+                <li
+                  key={p.id}
+                  className="list-group-item d-flex justify-content-between align-items-center bg-light"
+                >
+                  <span><strong>{p.descripcion}</strong></span>
+                  <span className="badge bg-danger rounded-pill">
+                    Disponible: {p.disponible} | Solicitado: {p.solicitado}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-muted small">
+              Ajuste la cantidad o elija otro producto.
+            </p>
+          </div>
+        );
+        mostrarMensaje(mensajeJSX);
+      } else {
+        mostrarMensaje(errorData.message || "Error en los datos de la factura.");
+      }
       return;
     }
 
-    try {
-      // ✅ 1. Primero, hacer la petición como JSON para capturar errores
-      const responseBlob = await fetch(
-        "http://localhost:5000/facturas/generar-pdf",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(facturaData),
-        }
+    // ✅ 3. Si es éxito, procesar el PDF
+    const pdfBlob = await response.blob();
+    const url = URL.createObjectURL(pdfBlob);
+    const link = document.createElement("a");
+    const numeroFactura = response.headers.get("X-Numero-Factura") || "factura";
+    link.href = url;
+    link.download = `factura_${numeroFactura}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    // ✅ 4. Guardar datos de la factura para impresión (solo si todo fue bien)
+    setFacturaGenerada({
+      numero_factura: numeroFactura,
+      fecha: new Date().toISOString(),
+      caja_id: cajaId,
+      cliente_nombre: selectedCliente.nombre,
+      tipo_rif: selectedCliente.tipo_rif,
+      numero_rif: selectedCliente.numero_rif,
+      total: selectedProducts.reduce(
+        (sum, p) => sum + p.precio * p.cantidadSeleccionada * dollarRate,
+        0
+      ),
+      metodo_pago: facturaData.pagos?.[0]?.metodo_pago || "Efectivo",
+      productos: selectedProducts.map(p => ({
+        id: p.id,
+        cantidad: p.cantidadSeleccionada,
+        descripcion: p.descripcion,
+        precio: p.precio
+      }))
+    });
+
+    // ✅ 5. Limpiar formulario
+    setSelectedCliente(null);
+    setSelectedProducts([]);
+    setTotalPagado(0);
+    mostrarMensaje("✅ Factura generada y descargada exitosamente.");
+  } catch (error) {
+    if (error.name === "SyntaxError") {
+      mostrarMensaje("❌ Error de formato en la respuesta del servidor.");
+    } else if (error.message.includes("Failed to fetch")) {
+      mostrarMensaje(
+        "❌ No se pudo conectar al servidor. Verifique que esté corriendo en http://localhost:5000"
       );
-
-      // ✅ 2. Si la respuesta es error, leer como JSON
-      if (!responseBlob.ok) {
-        const errorData = await responseBlob.json().catch(() => ({
-          message: "Error desconocido del servidor.",
-        }));
-
-        if (
-          errorData.productosSinStock &&
-          Array.isArray(errorData.productosSinStock)
-        ) {
-          const mensajeJSX = (
-            <div>
-              <h6 className="text-danger mb-3">
-                <strong>🚫 Producto sin stock</strong>
-              </h6>
-              <p>
-                <strong>No se puede generar la factura:</strong>
-              </p>
-              <ul className="list-group mb-3">
-                {errorData.productosSinStock.map((p) => (
-                  <li
-                    key={p.id}
-                    className="list-group-item d-flex justify-content-between align-items-center bg-light"
-                  >
-                    <span>
-                      <strong>{p.descripcion}</strong>
-                    </span>
-                    <span className="badge bg-danger rounded-pill">
-                      Disponible: {p.disponible} | Solicitado: {p.solicitado}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              <p className="text-muted small">
-                Ajuste la cantidad o elija otro producto.
-              </p>
-            </div>
-          );
-          mostrarMensaje(mensajeJSX);
-        } else {
-          mostrarMensaje(
-            errorData.message || "Error en los datos de la factura."
-          );
-        }
-        return;
-      }
-
-      // ✅ 3. Si es éxito, leer como blob para PDF
-      const pdfBlob = await responseBlob.blob();
-      const url = URL.createObjectURL(pdfBlob);
-      const link = document.createElement("a");
-      const contentDisposition = responseBlob.headers.get(
-        "Content-Disposition"
-      );
-      const numeroFactura =
-        responseBlob.headers.get("X-Numero-Factura") || "factura";
-      link.href = url;
-      link.download = `factura_${numeroFactura}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-
-      setSelectedCliente(null);
-      setSelectedProducts([]);
-      setTotalPagado(0);
-      mostrarMensaje("✅ Factura generada y descargada exitosamente.");
-    } catch (error) {
-      if (error.name === "SyntaxError") {
-        mostrarMensaje("❌ Error de formato en la respuesta del servidor.");
-      } else if (error.message.includes("Failed to fetch")) {
-        mostrarMensaje(
-          "❌ No se pudo conectar al servidor. Verifique que esté corriendo en http://localhost:5000"
-        );
-      } else {
-        mostrarMensaje("❌ Error inesperado: " + error.message);
-      }
+    } else {
+      mostrarMensaje("❌ Error inesperado: " + error.message);
     }
-  };
+  }
+};
 
   // Guardar factura pendiente
   const guardarFacturaPendiente = async () => {
@@ -634,7 +642,7 @@ function App() {
                 }}
               >
                 <img
-                  src="/fadin-logo.png"
+                  src="/facdin.png"
                   alt="FADIN - Facturación Digital Inteligente"
                   style={{
                     width: "70px",
@@ -715,6 +723,8 @@ function App() {
                       cajaId={cajaId}
                       selectedCliente={selectedCliente}
                       selectedProducts={selectedProducts}
+                      facturaGenerada={facturaGenerada}
+                      setFacturaGenerada={setFacturaGenerada}
                     />
                   )}
 
