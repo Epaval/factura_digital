@@ -1310,9 +1310,69 @@ app.put("/facturas/:id/anular", async (req, res) => {
   }
 });
 
+// Ruta /buscar
+app.get("/buscar", async (req, res) => {
+  const { q } = req.query;
 
+  if (!q || q.trim().length < 2) {
+    return res.json([]);
+  }
 
+  const searchTerm = `%${q.trim()}%`;
 
+  try {
+    // Buscar productos
+    const [productos] = await promiseDb.query(
+      `SELECT 
+        'producto' AS tipo,
+        id,
+        codigo,
+        descripcion,
+        precio,
+        cantidad
+      FROM productos 
+      WHERE codigo LIKE ? OR descripcion LIKE ?
+      LIMIT 5`,
+      [searchTerm, searchTerm]
+    );
+
+    // Buscar clientes (solo por nombre y numero_rif)
+    const [clientes] = await promiseDb.query(
+      `SELECT 
+        'cliente' AS tipo,
+        id,
+        nombre,
+        numero_rif,
+        tipo_rif
+      FROM clientes 
+      WHERE nombre LIKE ? OR numero_rif LIKE ?
+      LIMIT 5`,
+      [searchTerm, searchTerm]
+    );
+
+    const resultados = [
+      ...productos.map(p => ({
+        tipo: p.tipo,
+        id: p.id,
+        codigo: p.codigo,
+        descripcion: p.descripcion,
+        precio: parseFloat(p.precio),
+        cantidad: p.cantidad
+      })),
+      ...clientes.map(c => ({
+        tipo: c.tipo,
+        id: c.id,
+        nombre: c.nombre,
+        unidad: `${c.tipo_rif}-${c.numero_rif}`
+      }))
+    ];
+
+    res.json(resultados);
+  } catch (error) {
+    console.error("Error en /buscar:", error);
+    res.status(500).json([]);
+  }
+});
 
 // ✅ Iniciar servidor
 const startServer = async () => {

@@ -1,6 +1,7 @@
 // src/components/Header.js
 import React, { useState } from "react";
 import BcvDollar from "./BcvDollar";
+import BuscadorGlobal from "./BuscadorGlobal"; // 🔥 Nuevo: buscador con debounce
 import {
   FiHome,
   FiUsers,
@@ -9,13 +10,10 @@ import {
   FiBarChart2,
   FiDatabase,
   FiTag,
-  FiDollarSign,
   FiMenu,
   FiX,
   FiBox,
 } from "react-icons/fi";
-
-
 
 const Header = ({
   onNuevoCliente,
@@ -34,62 +32,68 @@ const Header = ({
   // Alternar menú en móvil
   const toggleMenu = () => setMenuAbierto(!menuAbierto);
 
+  // Animación del logo
   const [scale, setScale] = useState(1);
   const [isAnimating, setIsAnimating] = useState(false);
 
-const handleLogoClick = () => {
-    if (isAnimating) return; 
-
-    setScale(1.8); 
+  const handleLogoClick = () => {
+    if (isAnimating) return;
+    setScale(1.8);
     setIsAnimating(true);
-    
     setTimeout(() => {
       setScale(1);
       setIsAnimating(false);
-    }, 1000); 
+    }, 1000);
   };
 
-
   return (
-    <header className="bg-gradient bg-primary text-white shadow-sm">
+    <header className="bg-primary text-white shadow-sm">
       <div className="container-fluid">
         {/* Barra superior */}
-        <div className="d-flex justify-content-between align-items-center py-3 px-3">
+        <div className="d-flex flex-column flex-md-row justify-content-between align-items-center py-3 px-3 gap-3">
+          {/* Logo y título */}
           <div className="d-flex align-items-center">
             <h1 className="h5 mb-0 d-flex align-items-center">
-               <span className="d-none d-md-inline">FADIN. Facturación Digital Inteligente</span>
+              <span className="d-none d-md-inline">FADIN. Facturación Digital Inteligente</span>
               <span className="d-inline d-md-none">FADIN</span>
-               <img
-                  src="/fadin-logo.png"
-                  alt="FADIN - Facturación Digital Inteligente"
-                  style={{
-                    width: `${50 * scale}px`,
-                    height: "auto",
-                    maxWidth: "50%",
-                    marginLeft: "10px",
-                    cursor: "pointer",
-                    transform: `scale(${scale})`,
-                    transformOrigin: "center",
-                    transition: "transform 0.8s ease-out",
-                  }}
-                  onClick={handleLogoClick}
-                />
-             
+              <img
+                src="/fadin-logo.png"
+                alt="FADIN - Facturación Digital Inteligente"
+                style={{
+                  width: `${50 * scale}px`,
+                  height: "auto",
+                  maxWidth: "50%",
+                  marginLeft: "10px",
+                  cursor: "pointer",
+                  transform: `scale(${scale})`,
+                  transformOrigin: "center",
+                  transition: "transform 0.8s ease-out",
+                }}
+                onClick={handleLogoClick}
+              />
             </h1>
           </div>
 
-          {/* Botón menú para móvil */}
-          <button
-            className="btn btn-light btn-sm d-md-none d-flex align-items-center gap-1"
-            onClick={toggleMenu}
-            aria-label="Toggle menu"
-          >
-            {menuAbierto ? <FiX size={18} /> : <FiMenu size={18} />}
-          </button>
+          {/* Buscador global (visible en todos los dispositivos) */}
+          <div className="flex-fill mx-md-4" style={{ maxWidth: "400px" }}>
+            <BuscadorGlobal onResultados={(resultados) => console.log(resultados)} />
+          </div>
 
-          {/* Tasa BCV - visible en todos los dispositivos */}
-          <div className="d-none d-md-block">
-            <BcvDollar />
+          {/* Botón menú móvil y tasa BCV */}
+          <div className="d-flex align-items-center gap-2">
+            {/* Botón menú móvil */}
+            <button
+              className="btn btn-light btn-sm d-md-none d-flex align-items-center gap-1"
+              onClick={toggleMenu}
+              aria-label="Toggle menu"
+            >
+              {menuAbierto ? <FiX size={18} /> : <FiMenu size={18} />}
+            </button>
+
+            {/* Tasa BCV - solo escritorio */}
+            <div className="d-none d-md-block">
+              <BcvDollar />
+            </div>
           </div>
         </div>
 

@@ -22,6 +22,7 @@ import SupervisorFacturas from "./components/SupervisorFacturas";
 import AdminDashboard from "./components/AdminDashboard";
 import ActualizarPreciosModal from "./components/ActualizarPreciosModal";
 import Inventario from "./components/Inventario";
+import BuscadorGlobal from "./components/BuscadorGlobal";
 import "./App.css";
 
 function App() {
@@ -526,6 +527,14 @@ function App() {
         onVerInventario={() => esSupervisor() && setMostrarInventario(true)}
         esSupervisor={esSupervisor}
         empleado={empleado}
+         onSelectProducto={(producto) => {
+          handleAddProduct(producto); // Añade al carrito
+          setMostrarBuscarFacturas(false);
+        }}
+        onSelectCliente={(cliente) => {
+          handleAddCliente(cliente); // Selecciona cliente
+        }}
+
       />
 
       <main className="main-content container mt-5">
