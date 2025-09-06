@@ -23,6 +23,7 @@ import AdminDashboard from "./components/AdminDashboard";
 import ActualizarPreciosModal from "./components/ActualizarPreciosModal";
 import Inventario from "./components/Inventario";
 import BuscadorGlobal from "./components/BuscadorGlobal";
+import ErrorBoundary from "./components/ErrorBoundary";
 import "./App.css";
 
 function App() {
@@ -519,6 +520,7 @@ function App() {
 
   return (
     <div className="app-container">
+      
       <Header
         onNuevoCliente={abrirModalNuevoCliente}
         onConsultarProductos={abrirModalConsultarProductos}
@@ -546,6 +548,7 @@ function App() {
       />
 
       <main className="main-content container mt-5">
+        <ErrorBoundary>
         {!cajaId && !mostrarDashboard ? (
           <div className="d-flex justify-content-center align-items-center min-vh-100 px-3">
             <div
@@ -850,7 +853,7 @@ function App() {
             {mostrarFacturasSupervisor && esSupervisor() && (
               <div className="mt-4">
                 <div className="d-flex justify-content-between align-items-center mb-4">
-                  <h4>Historial Completo de Facturas</h4>
+                  
                   <button
                     className="btn btn-secondary"
                     onClick={() => setMostrarFacturasSupervisor(false)}
@@ -863,6 +866,7 @@ function App() {
             )}
           </div>
         )}
+        </ErrorBoundary>
       </main>
 
       <Footer />
@@ -910,6 +914,7 @@ function App() {
         totalFacturado={totalPagado}
       />
     </div>
+    
   );
 }
 
@@ -985,6 +990,7 @@ function SeleccionarCaja({ empleado, onCajaAbierta }) {
         {cargando ? "Abriendo..." : "🔓 Abrir Caja"}
       </button>
     </div>
+    
   );
 }
 

@@ -1,6 +1,7 @@
-// src/components/ModalPagos.js
 import React, { useState, useEffect } from "react";
 import axios from "axios";
+import { FaCashRegister, FaDollarSign, FaBarcode, FaHistory, FaTimes, FaPlusCircle, FaCheckCircle } from "react-icons/fa";
+import { MdArrowBack } from "react-icons/md";
 
 function ModalPagos({ show, onClose, facturaId, totalFactura, onPagoRegistrado }) {
   const [metodosPago, setMetodosPago] = useState([]);
@@ -105,67 +106,103 @@ function ModalPagos({ show, onClose, facturaId, totalFactura, onPagoRegistrado }
   const diferencia = totalPagado - totalFactura;
   const esVuelto = diferencia > 0;
   const mostrarDiferencia = Math.abs(diferencia) > 0;
-
   const puedeGenerarFactura = totalPagado >= totalFactura;
 
   if (!show) return null;
 
   return (
-    <div className="modal show" style={{ display: "block", backgroundColor: "rgba(0, 0, 0, 0.5)" }}>
-      <div className="modal-dialog modal-lg modal-dialog-centered">
-        <div className="modal-content shadow-lg border-0">
-          <div className="modal-header bg-primary text-white">
-            <h5 className="modal-title">
-              <i className="bi bi-cash-stack me-2"></i>
-              Registrar Pagos
-            </h5>
-            <button type="button" className="btn-close btn-close-white" onClick={onClose}></button>
+    <>
+      {/* Overlay oscuro */}
+      <div
+        className="fixed-top bg-dark"
+        style={{
+          width: '100vw',
+          height: '100vh',
+          backgroundColor: 'rgba(0, 0, 0, 0.6)',
+          zIndex: 1040,
+          animation: 'fadeIn 0.3s ease-out',
+        }}
+        onClick={onClose}
+      ></div>
+
+      {/* Modal lateral derecho */}
+      <div
+        className="position-fixed top-0 end-0 h-100"
+        style={{
+          width: '420px',
+          backgroundColor: '#fff',
+          boxShadow: '0 0 30px rgba(0, 0, 0, 0.3)',
+          zIndex: 1050,
+          transform: 'translateX(0)',
+          transition: 'transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1)',
+          animation: 'slideInRight 0.4s ease-out',
+        }}
+      >
+        <div className="d-flex flex-column h-100">
+          {/* Header */}
+          <div className="p-4 bg-gradient text-white d-flex align-items-center" style={{ background: 'linear-gradient(45deg, #007bff, #0056b3)' }}>
+            <FaCashRegister size={28} className="me-3" />
+            <h5 className="mb-0 flex-grow-1">Registrar Pagos</h5>
+            <button
+              type="button"
+              className="btn btn-light btn-sm rounded-circle d-flex align-items-center justify-content-center"
+              style={{ width: '36px', height: '36px' }}
+              onClick={onClose}
+            >
+              <FaTimes />
+            </button>
           </div>
 
-          <div className="modal-body">
-            {/* === RESUMEN VISUAL === */}
-            <div className="row g-3 mb-4 text-center">
-              <div className="col-md-4">
-                <div className="p-3 border rounded bg-light">
+          <div className="flex-grow-1 overflow-auto p-4" style={{ backgroundColor: '#f8f9fa' }}>
+            {/* Resumen visual */}
+            <div className="row g-3 mb-4">
+              <div className="col-12">
+                <div className="p-3 rounded shadow-sm bg-white border">
                   <small className="text-muted">Total Factura</small>
-                  <h5 className="mb-0 mt-2 text-dark fw-bold">
-                    Bs.{totalFactura.toFixed(2)}
-                  </h5>
+                  <div className="d-flex align-items-center mt-1">
+                    <FaDollarSign className="text-primary me-2" />
+                    <h5 className="mb-0 text-dark fw-bold">Bs.{totalFactura.toFixed(2)}</h5>
+                  </div>
                 </div>
               </div>
 
-              <div className="col-md-4">
-                <div className={`p-3 border rounded ${totalPagado >= totalFactura ? 'bg-success text-white' : 'bg-danger text-white'}`}>
+              <div className="col-12">
+                <div className={`p-3 rounded shadow-sm ${totalPagado >= totalFactura ? 'bg-success text-white' : 'bg-light text-dark'}`}>
                   <small>Total Pagado</small>
-                  <h5 className="mb-0 mt-2 fw-bold">
-                    Bs.{totalPagado.toFixed(2)}
-                  </h5>
+                  <div className="d-flex align-items-center mt-1">
+                    <FaDollarSign className="me-2" />
+                    <h5 className="mb-0 fw-bold">Bs.{totalPagado.toFixed(2)}</h5>
+                  </div>
                 </div>
               </div>
 
-              <div className="col-md-4">
-                {esVuelto ? (
-                  <div className="p-3 border rounded bg-info text-white">
-                    <small>Vuelto al cliente</small>
-                    <h5 className="mb-0 mt-2 fw-bold">
-                      Bs.{diferencia.toFixed(2)}
-                    </h5>
-                  </div>
-                ) : (
-                  <div className="p-3 border rounded bg-warning text-dark">
-                    <small>Falta por pagar</small>
-                    <h5 className="mb-0 mt-2 fw-bold">
-                      Bs.{(-diferencia).toFixed(2)}
-                    </h5>
-                  </div>
-                )}
-              </div>
+              {mostrarDiferencia && (
+                <div className="col-12">
+                  {esVuelto ? (
+                    <div className="p-3 rounded shadow-sm bg-info text-white">
+                      <small>Vuelto al cliente</small>
+                      <div className="d-flex align-items-center mt-1">
+                        <FaCashRegister className="me-2" />
+                        <h5 className="mb-0 fw-bold">Bs.{diferencia.toFixed(2)}</h5>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded shadow-sm bg-warning text-dark">
+                      <small>Falta por pagar</small>
+                      <div className="d-flex align-items-center mt-1">
+                        <FaCashRegister className="me-2" />
+                        <h5 className="mb-0 fw-bold">Bs.{(-diferencia).toFixed(2)}</h5>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
-            {/* Mensaje de estado */}
+            {/* Estado */}
             {puedeGenerarFactura ? (
-              <div className="alert alert-success text-center mb-4">
-                <strong>✅ Pago completo. Listo para generar factura.</strong>
+              <div className="alert alert-success text-center mb-4 d-flex align-items-center">
+                <FaCheckCircle className="me-2" /> <strong>✅ Pago completo. Listo para generar factura.</strong>
               </div>
             ) : (
               <div className="alert alert-light text-center mb-4">
@@ -178,10 +215,10 @@ function ModalPagos({ show, onClose, facturaId, totalFactura, onPagoRegistrado }
             {/* Formulario */}
             <form onSubmit={handleSubmit}>
               <div className="row g-3 mb-3">
-                <div className="col-md-5">
-                  <label><strong>Método de Pago</strong></label>
+                <div className="col-12">
+                  <label className="form-label"><strong>Método de Pago</strong></label>
                   <select
-                    className="form-control"
+                    className="form-control form-select"
                     name="metodo_pago_id"
                     value={pago.metodo_pago_id}
                     onChange={handleChange}
@@ -194,8 +231,8 @@ function ModalPagos({ show, onClose, facturaId, totalFactura, onPagoRegistrado }
                   </select>
                 </div>
 
-                <div className="col-md-4">
-                  <label><strong>Monto</strong></label>
+                <div className="col-12">
+                  <label className="form-label"><strong>Monto</strong></label>
                   <input
                     type="number"
                     step="0.01"
@@ -208,83 +245,104 @@ function ModalPagos({ show, onClose, facturaId, totalFactura, onPagoRegistrado }
                   />
                 </div>
 
-                <div className="col-md-3 d-flex align-items-end">
-                  <button type="submit" className="btn btn-primary btn-lg w-100">
-                    +
-                  </button>
-                </div>
+                {/* Referencia */}
+                {metodoSeleccionado && !metodoSeleccionado.nombre.includes("Efectivo") && (
+                  <div className="col-12">
+                    <label className="form-label"><strong>Referencia</strong></label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      name="referencia"
+                      value={pago.referencia}
+                      onChange={handleChange}
+                      placeholder="Número de transferencia, tarjeta, etc."
+                    />
+                  </div>
+                )}
+
+                {/* Conversión Efectivo $ */}
+                {metodoSeleccionado?.nombre === "Efectivo $" && pago.monto && (
+                  <div className="col-12">
+                    <div className="alert alert-info mb-0 small">
+                      💵 <strong>${pago.monto}</strong> → <strong>Bs.{(parseFloat(pago.monto) * dollarRate).toFixed(2)}</strong>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {/* Referencia (si aplica) */}
-              {metodoSeleccionado && !metodoSeleccionado.nombre.includes("Efectivo") && (
-                <div className="mb-3">
-                  <label><strong>Referencia</strong></label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    name="referencia"
-                    value={pago.referencia}
-                    onChange={handleChange}
-                    placeholder="Número de transferencia, tarjeta, etc."
-                  />
-                </div>
-              )}
-
-              {/* Conversión Efectivo $ */}
-              {metodoSeleccionado?.nombre === "Efectivo $" && pago.monto && (
-                <div className="alert alert-info">
-                  <small>
-                    💵 <strong>${pago.monto}</strong> → 
-                    <strong> Bs.{(parseFloat(pago.monto) * dollarRate).toFixed(2)}</strong>
-                  </small>
-                </div>
-              )}
+              <button
+                type="submit"
+                className="btn btn-primary btn-lg w-100 d-flex align-items-center justify-content-center gap-2 py-3"
+              >
+                <FaPlusCircle /> Agregar Pago
+              </button>
             </form>
 
             {/* Historial */}
             {pagos.length > 0 && (
               <div className="mt-4">
-                <h6 className="text-primary">
-                  <i className="bi bi-clock-history me-1"></i>
-                  Historial de Pagos
+                <h6 className="text-primary d-flex align-items-center mb-3">
+                  <FaHistory className="me-2" /> Historial de Pagos
                 </h6>
-                <table className="table table-striped table-sm">
-                  <thead className="table-dark">
-                    <tr>
-                      <th>Método</th>
-                      <th>Monto (Bs)</th>
-                      <th>Referencia</th>
-                      <th>Fecha</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pagos.map((p, i) => (
-                      <tr key={i}>
-                        <td>{p.metodo_pago}</td>
-                        <td>Bs.{parseFloat(p.monto).toFixed(2)}</td>
-                        <td>{p.referencia || "-"}</td>
-                        <td>{new Date(p.fecha).toLocaleString()}</td>
+                <div className="table-responsive">
+                  <table className="table table-hover table-sm">
+                    <thead className="table-light">
+                      <tr>
+                        <th>Método</th>
+                        <th>Monto</th>
+                        <th>Fecha</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {pagos.map((p, i) => (
+                        <tr key={i}>
+                          <td>{p.metodo_pago}</td>
+                          <td>Bs.{parseFloat(p.monto).toFixed(2)}</td>
+                          <td>{new Date(p.fecha).toLocaleTimeString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>
 
-          <div className="modal-footer">
-            {puedeGenerarFactura && (
-              <button className="btn btn-success px-4" onClick={onClose}>
-                ✅ Cerrar y Generar Factura
+          {/* Footer */}
+          <div className="p-4 border-top bg-white">
+            <div className="d-grid gap-2">
+              {puedeGenerarFactura && (
+                <button
+                  className="btn btn-success btn-lg d-flex align-items-center justify-content-center gap-2 py-3"
+                  onClick={onClose}
+                >
+                  <FaCheckCircle /> Cerrar y Generar Factura
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn btn-outline-secondary"
+                onClick={onClose}
+              >
+                <MdArrowBack /> Volver
               </button>
-            )}
-            <button type="button" className="btn btn-secondary" onClick={onClose}>
-              Cerrar
-            </button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+
+      {/* Estilos adicionales */}
+      <style jsx>{`
+        @keyframes slideInRight {
+          from { transform: translateX(100%); }
+          to { transform: translateX(0); }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+      `}</style>
+    </>
   );
 }
 

@@ -1,6 +1,5 @@
-// server.js
 const express = require("express");
-const mysql = require("mysql2");
+const mysql = require("mysql2/promise");
 const cors = require("cors");
 require("dotenv").config();
 
@@ -12,34 +11,52 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static("public"));
 
-// === CONEXIÓN A LA BASE DE DATOS ===
-const db = mysql.createPool({
+// === CONEXIÓN A LA BASE DE DATOS MEJORADA ===
+const dbConfig = {
   host: process.env.DB_HOST || "localhost",
   user: process.env.DB_USER || "root",
   password: process.env.DB_PASSWORD || "",
   database: process.env.DB_DATABASE || "facturacion",
+  port: process.env.DB_PORT || 3306,
+  charset: 'utf8mb4',
+  timezone: 'local',
+  
+  // Configuración del pool optimizada
   waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-});
+  connectionLimit: 15,
+  queueLimit: 100,
+  acquireTimeout: 60000,
+  idleTimeout: 60000,
+  maxIdle: 10,
+  
+  // Keep alive para reconexión automática
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 10000,
+};
+
+// Crear el pool (ya devuelve promesas por defecto)
+const db = mysql.createPool(dbConfig);
+
+// Probar conexión
+async function testConnection() {
+  try {
+    const [rows] = await db.query("SELECT 1");
+    console.log("✅ Conectado a la base de datos MySQL");
+    return true;
+  } catch (err) {
+    console.error("❌ Error conectando a la base de datos:", err);
+    process.exit(1);
+  }
+}
+
+testConnection();
 
 function getLocalDate() {
   const now = new Date();
-  const offset = now.getTimezoneOffset() * 60000; // minutos a ms
+  const offset = now.getTimezoneOffset() * 60000;
   const localTime = new Date(now - offset);
-  return localTime.toISOString().split("T")[0]; // YYYY-MM-DD
+  return localTime.toISOString().split("T")[0];
 }
-
-const promiseDb = db.promise();
-
-// Probar conexión
-promiseDb
-  .query("SELECT 1")
-  .then(() => console.log("✅ Conectado a la base de datos MySQL"))
-  .catch((err) => {
-    console.error("❌ Error conectando a la base de datos:", err);
-    process.exit(1);
-  });
 
 // === Función para generar PDF desde datos ===
 function generarPDFDesdeDatos(doc, factura, productos, dollarRate = 30) {
@@ -191,7 +208,7 @@ function generarPDFDesdeDatos(doc, factura, productos, dollarRate = 30) {
 const inicializarContadores = async () => {
   let connection;
   try {
-    connection = await promiseDb.getConnection();
+    connection = await db.getConnection();
     await connection.beginTransaction();
 
     const [rows] = await connection.query(
@@ -224,16 +241,18 @@ try {
 }
 
 // --- RUTAS BÁSICAS ---
-app.get("/clientes", (req, res) => {
-  db.query("SELECT * FROM clientes", (err, results) => {
-    if (err) return res.status(500).json({ message: "Error al obtener clientes." });
+app.get("/clientes", async (req, res) => {
+  try {
+    const [results] = await db.query("SELECT * FROM clientes");
     res.json(results);
-  });
+  } catch (err) {
+    res.status(500).json({ message: "Error al obtener clientes." });
+  }
 });
 
-app.get("/productos", (req, res) => {
-  db.query("SELECT * FROM productos", (err, results) => {
-    if (err) return res.status(500).json({ message: "Error al obtener productos." });
+app.get("/productos", async (req, res) => {
+  try {
+    const [results] = await db.query("SELECT * FROM productos");
     
     const productos = results.map(p => ({
       ...p,
@@ -242,7 +261,9 @@ app.get("/productos", (req, res) => {
     }));
     
     res.json(productos);
-  });
+  } catch (err) {
+    res.status(500).json({ message: "Error al obtener productos." });
+  }
 });
 
 // === RUTA: Guardar factura pendiente (asigna número único) ===
@@ -255,10 +276,9 @@ app.post("/facturas/guardar", async (req, res) => {
 
   let connection;
   try {
-    connection = await promiseDb.getConnection();
+    connection = await db.getConnection();
     await connection.beginTransaction();
 
-    // 🔐 Obtener y bloquear contadores
     const [rows] = await connection.query("SELECT ultimo_numero_factura, ultimo_numero_control FROM contadores WHERE id = 1 FOR UPDATE");
     
     if (rows.length === 0) {
@@ -275,7 +295,6 @@ app.post("/facturas/guardar", async (req, res) => {
 
     const fecha = getLocalDate();
 
-    // 🔐 Insertar factura pendiente
     const [facturaResult] = await connection.query(
       "INSERT INTO facturas (numero_factura, numero_control, cliente_id, fecha, total, estado) VALUES (?, ?, ?, ?, ?, 'pendiente')",
       [nuevoFactura, numeroControl, cliente_id, fecha, total]
@@ -283,7 +302,6 @@ app.post("/facturas/guardar", async (req, res) => {
 
     const facturaId = facturaResult.insertId;
 
-    // 🔐 Insertar detalles
     if (productos.length > 0) {
       const detallesValues = productos.map(p => [
         facturaId,
@@ -294,7 +312,6 @@ app.post("/facturas/guardar", async (req, res) => {
       await connection.query("INSERT INTO factura_detalle (factura_id, producto_id, cantidad, precio) VALUES ?", [detallesValues]);
     }
 
-    // 🔐 Actualizar contadores (¡incluso para pendientes!)
     await connection.query(
       "UPDATE contadores SET ultimo_numero_factura = ?, ultimo_numero_control = ? WHERE id = 1",
       [nuevoFactura, numeroControl]
@@ -328,10 +345,9 @@ app.post("/facturas/generar-pdf", async (req, res) => {
 
   let connection;
   try {
-    connection = await promiseDb.getConnection();
+    connection = await db.getConnection();
     await connection.beginTransaction();
 
-    // ✅ 1. Verificar stock disponible (solo si es nueva factura o pendiente)
     const productosIds = productos.map(p => p.id);
     const [stockRows] = await connection.query(
       "SELECT id, cantidad, descripcion FROM productos WHERE id IN (?) FOR UPDATE",
@@ -343,7 +359,6 @@ app.post("/facturas/generar-pdf", async (req, res) => {
       stockMap[row.id] = { cantidad: row.cantidad, descripcion: row.descripcion };
     });
 
-    // ✅ 2. Validar stock
     const productosSinStock = [];
     for (const producto of productos) {
       const disponible = stockMap[producto.id]?.cantidad || 0;
@@ -359,7 +374,6 @@ app.post("/facturas/generar-pdf", async (req, res) => {
     }
 
     if (productosSinStock.length > 0) {
-      //console.log("Productos sin stock:", productosSinStock);
       await connection.rollback();
       return res.status(400).json({
         message: "Stock insuficiente para algunos productos.",
@@ -370,7 +384,6 @@ app.post("/facturas/generar-pdf", async (req, res) => {
     let nuevoFactura, numeroControl, facturaId, esNueva = true;
 
     if (facturaIdExistente) {
-      // ✅ Recuperar factura pendiente
       const [facturaRows] = await connection.query(
         "SELECT id, numero_factura, numero_control FROM facturas WHERE id = ? FOR UPDATE",
         [facturaIdExistente]
@@ -386,13 +399,11 @@ app.post("/facturas/generar-pdf", async (req, res) => {
       numeroControl = facturaRows[0].numero_control;
       esNueva = false;
 
-      // ✅ Cambiar estado a 'pagado'
       await connection.query(
         "UPDATE facturas SET estado = 'pagado', caja_id = ? WHERE id = ?",
         [caja_id, facturaId]
       );
     } else {
-      // ✅ Nueva factura: obtener números
       const [rows] = await connection.query("SELECT ultimo_numero_factura, ultimo_numero_control FROM contadores WHERE id = 1 FOR UPDATE");
       
       if (rows.length === 0) {
@@ -412,14 +423,12 @@ app.post("/facturas/generar-pdf", async (req, res) => {
       const IVA = totalSinIVA * 0.16;
       const totalConIVA = totalSinIVA + IVA;
 
-      // 🔐 Insertar factura
       const [result] = await connection.query(
         "INSERT INTO facturas (numero_factura, numero_control, cliente_id, fecha, total, estado, caja_id) VALUES (?, ?, ?, ?, ?, 'pagado', ?)",
         [nuevoFactura, numeroControl, cliente.id, fecha, totalConIVA, caja_id]
       );
       facturaId = result.insertId;
 
-      // 🔐 Insertar detalles (esto activará el trigger)
       if (productos.length > 0) {
         const detallesValues = productos.map(p => [
           facturaId,
@@ -430,7 +439,6 @@ app.post("/facturas/generar-pdf", async (req, res) => {
         await connection.query("INSERT INTO factura_detalle (factura_id, producto_id, cantidad, precio) VALUES ?", [detallesValues]);
       }
 
-      // 🔐 Insertar pagos
       if (req.body.pagos?.length > 0) {
         const pagosValues = req.body.pagos.map(p => [
           facturaId,
@@ -442,20 +450,15 @@ app.post("/facturas/generar-pdf", async (req, res) => {
         await connection.query("INSERT INTO pagos (factura_id, metodo_pago_id, monto, referencia, caja_id) VALUES ?", [pagosValues]);
       }
 
-      // 🔐 Actualizar contadores
       await connection.query(
         "UPDATE contadores SET ultimo_numero_factura = ?, ultimo_numero_control = ? WHERE id = 1",
         [nuevoFactura, numeroControl]
       );
     }
 
-    // ✅ No descontar aquí → lo hace el trigger en factura_detalle
-    // ✅ ¡Evita el doble descuento!
-
     await connection.commit();
     connection.release();
 
-    // ✅ Datos para PDF
     const facturaData = {
       numero_factura: nuevoFactura,
       numero_control: numeroControl,
@@ -500,14 +503,16 @@ app.post("/facturas/generar-pdf", async (req, res) => {
 });
 
 // === RUTAS RESTANTES ===
-app.get("/metodos-pago", (req, res) => {
-  db.query("SELECT * FROM metodos_pago", (err, results) => {
-    if (err) return res.status(500).json({ message: "Error al obtener métodos de pago." });
+app.get("/metodos-pago", async (req, res) => {
+  try {
+    const [results] = await db.query("SELECT * FROM metodos_pago");
     res.json(results);
-  });
+  } catch (err) {
+    res.status(500).json({ message: "Error al obtener métodos de pago." });
+  }
 });
 
-app.get("/facturas", (req, res) => {
+app.get("/facturas", async (req, res) => {
   const query = `
     SELECT 
       f.id,
@@ -524,10 +529,13 @@ app.get("/facturas", (req, res) => {
     JOIN clientes c ON f.cliente_id = c.id
     ORDER BY f.id DESC
   `;
-  db.query(query, (err, results) => {
-    if (err) return res.status(500).json({ message: "Error al obtener facturas." });
+  
+  try {
+    const [results] = await db.query(query);
     res.json(results);
-  });
+  } catch (err) {
+    res.status(500).json({ message: "Error al obtener facturas." });
+  }
 });
 
 app.get("/facturas/pendientes", async (req, res) => {
@@ -540,23 +548,26 @@ app.get("/facturas/pendientes", async (req, res) => {
     AND DATE(fecha) = CURDATE()
     ORDER BY f.fecha DESC
   `;
+  
   try {
-    const [results] = await promiseDb.query(query);
+    const [results] = await db.query(query);
     res.json(results);
   } catch (err) {
     res.status(500).json({ message: "Error al cargar facturas pendientes." });
   }
 });
 
-app.get("/pagos/total/:facturaId", (req, res) => {
+app.get("/pagos/total/:facturaId", async (req, res) => {
   const { facturaId } = req.params;
-  db.query("SELECT COALESCE(SUM(monto), 0) AS total_pagado FROM pagos WHERE factura_id = ?", [facturaId], (err, results) => {
-    if (err) return res.status(500).json({ message: "Error al calcular total pagado." });
+  try {
+    const [results] = await db.query("SELECT COALESCE(SUM(monto), 0) AS total_pagado FROM pagos WHERE factura_id = ?", [facturaId]);
     res.json({ total_pagado: parseFloat(results[0].total_pagado) });
-  });
+  } catch (err) {
+    res.status(500).json({ message: "Error al calcular total pagado." });
+  }
 });
 
-app.get("/facturas/cliente/:numero", (req, res) => {
+app.get("/facturas/cliente/:numero", async (req, res) => {
   const { numero } = req.params;
   const query = `
     SELECT f.id, f.numero_factura, f.numero_control, f.fecha, f.total, f.estado,
@@ -566,22 +577,27 @@ app.get("/facturas/cliente/:numero", (req, res) => {
     WHERE c.numero_rif = ? AND f.estado = 'pendiente'
     ORDER BY f.fecha DESC
   `;
-  db.query(query, [numero], (err, results) => {
-    if (err) return res.status(500).json({ message: "Error al buscar facturas." });
+  
+  try {
+    const [results] = await db.query(query, [numero]);
     res.json(results);
-  });
+  } catch (err) {
+    res.status(500).json({ message: "Error al buscar facturas." });
+  }
 });
 
-app.get("/clientes/:id", (req, res) => {
+app.get("/clientes/:id", async (req, res) => {
   const { id } = req.params;
-  db.query("SELECT * FROM clientes WHERE id = ?", [id], (err, results) => {
-    if (err) return res.status(500).json({ message: "Error al obtener cliente." });
+  try {
+    const [results] = await db.query("SELECT * FROM clientes WHERE id = ?", [id]);
     if (results.length === 0) return res.status(404).json({ message: "Cliente no encontrado." });
     res.json(results[0]);
-  });
+  } catch (err) {
+    res.status(500).json({ message: "Error al obtener cliente." });
+  }
 });
 
-app.get("/factura-detalle/:facturaId", (req, res) => {
+app.get("/factura-detalle/:facturaId", async (req, res) => {
   const { facturaId } = req.params;
   const sql = `
     SELECT fd.*, p.descripcion, p.codigo, p.precio 
@@ -589,42 +605,52 @@ app.get("/factura-detalle/:facturaId", (req, res) => {
     JOIN productos p ON fd.producto_id = p.id
     WHERE fd.factura_id = ?
   `;
-  db.query(sql, [facturaId], (err, results) => {
-    if (err) return res.status(500).json({ message: "Error al obtener detalles." });
+  
+  try {
+    const [results] = await db.query(sql, [facturaId]);
     res.json(results);
-  });
+  } catch (err) {
+    res.status(500).json({ message: "Error al obtener detalles." });
+  }
 });
 
-app.put("/facturas/:id/estado", (req, res) => {
+app.put("/facturas/:id/estado", async (req, res) => {
   const { id } = req.params;
   const { estado } = req.body;
+  
   if (!["pagado", "anulado", "SIN PAGO"].includes(estado)) {
     return res.status(400).json({ message: "Estado no válido." });
   }
-  db.query("UPDATE facturas SET estado = ? WHERE id = ?", [estado, id], (err, result) => {
-    if (err) return res.status(500).json({ message: "Error al actualizar estado." });
+  
+  try {
+    const [result] = await db.query("UPDATE facturas SET estado = ? WHERE id = ?", [estado, id]);
     if (result.affectedRows === 0) return res.status(404).json({ message: "Factura no encontrada." });
     res.json({ message: "Estado actualizado." });
-  });
+  } catch (err) {
+    res.status(500).json({ message: "Error al actualizar estado." });
+  }
 });
 
-app.get("/empleados/ficha/:ficha", (req, res) => {
+app.get("/empleados/ficha/:ficha", async (req, res) => {
   const { ficha } = req.params;
   const query = "SELECT id, nombre, apellido, ci, ficha, rol FROM empleados WHERE ficha = ?";
   
-  db.query(query, [ficha], (err, results) => {
-    if (err) return res.status(500).json({ message: "Error al buscar empleado." });
+  try {
+    const [results] = await db.query(query, [ficha]);
     if (results.length === 0) return res.status(404).json({ message: "Empleado no encontrado." });
-    
     res.json(results[0]);
-  });
+  } catch (err) {
+    res.status(500).json({ message: "Error al buscar empleado." });
+  }
 });
 
-app.get("/cajas/disponibles", (req, res) => {
-  db.query("SELECT id, nombre FROM cajas WHERE estado = 'disponible'", (err, results) => {
-    if (err) return res.status(500).json({ message: "Error al cargar cajas." });
+app.get("/cajas/disponibles", async (req, res) => {
+  try {
+    const [results] = await db.query("SELECT id, nombre FROM cajas WHERE estado = 'disponible'");
     res.json(results);
-  });
+  } catch (err) {
+    res.status(500).json({ message: "Error al cargar cajas." });
+  }
 });
 
 app.post("/cajas/abrir", async (req, res) => {
@@ -633,7 +659,7 @@ app.post("/cajas/abrir", async (req, res) => {
 
   let connection;
   try {
-    connection = await promiseDb.getConnection();
+    connection = await db.getConnection();
     await connection.beginTransaction();
 
     const [cajas] = await connection.query("SELECT estado FROM cajas WHERE id = ? FOR UPDATE", [caja_id]);
@@ -654,13 +680,12 @@ app.post("/cajas/abrir", async (req, res) => {
 });
 
 app.post("/cajas/cerrar", async (req, res) => {
-  
   const { caja_id } = req.body;
   if (!caja_id || typeof caja_id !== "number") return res.status(400).json({ message: "Caja no válida." });
 
   let connection;
   try {
-    connection = await promiseDb.getConnection();
+    connection = await db.getConnection();
     await connection.beginTransaction();
 
     const [cajas] = await connection.query("SELECT estado, empleado_id FROM cajas WHERE id = ? FOR UPDATE", [caja_id]);
@@ -685,7 +710,7 @@ app.post("/cajas/cerrar", async (req, res) => {
 
 app.get("/cajas/estado", async (req, res) => {
   try {
-    const [cajas] = await promiseDb.query(`
+    const [cajas] = await db.query(`
       SELECT 
         c.id,
         c.nombre,
@@ -711,7 +736,6 @@ app.get("/cajas/estado", async (req, res) => {
     }));
 
     res.json(estadoCajas);
-    //console.log(estadoCajas);
   } catch (error) {
     console.error("Error al obtener estado de cajas:", error);
     res.status(500).json({ message: "Error al cargar estado de cajas." });
@@ -721,7 +745,7 @@ app.get("/cajas/estado", async (req, res) => {
 app.get("/facturas/:id/pdf", async (req, res) => {
   const { id } = req.params;
   try {
-    const [facturaRows] = await promiseDb.query(`
+    const [facturaRows] = await db.query(`
       SELECT f.numero_factura, f.numero_control, f.fecha, f.total,
              c.nombre AS cliente_nombre, c.tipo_rif, c.numero_rif, c.correo, c.telefono, c.direccion, c.operador
       FROM facturas f
@@ -733,7 +757,7 @@ app.get("/facturas/:id/pdf", async (req, res) => {
 
     const factura = facturaRows[0];
 
-    const [productosRows] = await promiseDb.query(`
+    const [productosRows] = await db.query(`
       SELECT p.codigo, p.descripcion, fd.cantidad, fd.precio
       FROM factura_detalle fd
       JOIN productos p ON fd.producto_id = p.id
@@ -757,7 +781,7 @@ app.get("/facturas/:id/pdf", async (req, res) => {
   }
 });
 
-app.get("/pagos/factura/:facturaId", (req, res) => {
+app.get("/pagos/factura/:facturaId", async (req, res) => {
   const { facturaId } = req.params;
 
   const query = `
@@ -773,16 +797,16 @@ app.get("/pagos/factura/:facturaId", (req, res) => {
     ORDER BY p.fecha DESC
   `;
 
-  db.query(query, [facturaId], (err, results) => {
-    if (err) {
-      console.error("Error al obtener pagos:", err);
-      return res.status(500).json({ message: "Error al obtener pagos." });
-    }
+  try {
+    const [results] = await db.query(query, [facturaId]);
     res.json(results);
-  });
+  } catch (err) {
+    console.error("Error al obtener pagos:", err);
+    res.status(500).json({ message: "Error al obtener pagos." });
+  }
 });
 
-app.post("/pagos", (req, res) => {
+app.post("/pagos", async (req, res) => {
   const { factura_id, metodo_pago_id, monto, referencia, caja_id } = req.body;
 
   if (!factura_id || !metodo_pago_id || typeof monto !== "number" || monto <= 0 || !caja_id) {
@@ -794,12 +818,9 @@ app.post("/pagos", (req, res) => {
     VALUES (?, ?, ?, ?, ?)
   `;
 
-  db.query(query, [factura_id, metodo_pago_id, monto, referencia || null, caja_id], (err, result) => {
-    if (err) {
-      console.error("Error al registrar pago:", err);
-      return res.status(500).json({ message: "Error al registrar pago." });
-    }
-
+  try {
+    const [result] = await db.query(query, [factura_id, metodo_pago_id, monto, referencia || null, caja_id]);
+    
     res.status(201).json({
       id: result.insertId,
       factura_id,
@@ -809,13 +830,16 @@ app.post("/pagos", (req, res) => {
       caja_id,
       fecha: getLocalDate(),
     });
-  });
+  } catch (err) {
+    console.error("Error al registrar pago:", err);
+    res.status(500).json({ message: "Error al registrar pago." });
+  }
 });
 
 app.get("/facturas/caja/:caja_id", async (req, res) => {
   const { caja_id } = req.params;
   try {
-    const [rows] = await promiseDb.query(
+    const [rows] = await db.query(
       `SELECT f.id, f.numero_factura, f.total, f.estado, f.fecha, 
               c.nombre AS cliente_nombre, c.numero_rif 
        FROM facturas f
@@ -832,7 +856,7 @@ app.get("/facturas/caja/:caja_id", async (req, res) => {
 
 app.get("/facturas/todas", async (req, res) => {
   try {
-    const [rows] = await promiseDb.query(`
+    const [rows] = await db.query(`
       SELECT 
         f.id,
         f.numero_factura,
@@ -856,63 +880,54 @@ app.get("/facturas/todas", async (req, res) => {
   }
 });
 
-
 // === RUTA: Dashboard del Admin ===
 app.get("/reportes/admin", async (req, res) => {
   try {
     const hoy = new Date().toISOString().split("T")[0];
     const primerDiaMes = hoy.substring(0, 8) + "01";
 
-    // Total diario
-    const [totalDiario] = await promiseDb.query(
+    const [totalDiario] = await db.query(
       "SELECT COALESCE(SUM(total), 0) as total FROM facturas WHERE estado = 'pagado' AND DATE(fecha) = ?",
       [hoy]
     );
     const totalDiarioVal = parseFloat(totalDiario[0].total) || 0;
 
-    // Total semanal
-    const [totalSemanal] = await promiseDb.query(
+    const [totalSemanal] = await db.query(
       "SELECT COALESCE(SUM(total), 0) as total FROM facturas WHERE estado = 'pagado' AND YEARWEEK(fecha, 1) = YEARWEEK(CURDATE(), 1)"
     );
     const totalSemanalVal = parseFloat(totalSemanal[0].total) || 0;
 
-    // Total mensual
-    const [totalMensual] = await promiseDb.query(
+    const [totalMensual] = await db.query(
       "SELECT COALESCE(SUM(total), 0) as total FROM facturas WHERE estado = 'pagado' AND fecha >= ?",
       [primerDiaMes]
     );
     const totalMensualVal = parseFloat(totalMensual[0].total) || 0;
 
-    // Total general
-    const [totalGeneral] = await promiseDb.query(
+    const [totalGeneral] = await db.query(
       "SELECT COALESCE(SUM(total), 0) as total FROM facturas WHERE estado = 'pagado'"
     );
     const totalGeneralVal = parseFloat(totalGeneral[0].total) || 0;
 
-    // Impuestos
-    const [impuestos] = await promiseDb.query(
+    const [impuestos] = await db.query(
       "SELECT COALESCE(SUM(total * 0.16), 0) as iva FROM facturas WHERE estado = 'pagado'"
     );
     const impuestosVal = parseFloat(impuestos[0].iva) || 0;
 
-    // 3. Pagos por tipo
-    const [pagosPorTipo] = await promiseDb.query(`
+    const [pagosPorTipo] = await db.query(`
       SELECT mp.nombre, COALESCE(SUM(p.monto), 0) as total
       FROM metodos_pago mp
       LEFT JOIN pagos p ON mp.id = p.metodo_pago_id
       GROUP BY mp.id, mp.nombre
     `);
 
-    // 4. Facturación por caja
-    const [facturacionPorCaja] = await promiseDb.query(`
+    const [facturacionPorCaja] = await db.query(`
       SELECT c.nombre, COALESCE(SUM(f.total), 0) as total
       FROM cajas c
       LEFT JOIN facturas f ON c.id = f.caja_id AND f.estado = 'pagado'
       GROUP BY c.id, c.nombre
     `);
 
-    // 5. Facturación por empleado
-    const [facturacionPorEmpleado] = await promiseDb.query(`
+    const [facturacionPorEmpleado] = await db.query(`
       SELECT e.nombre, e.apellido, COALESCE(SUM(f.total), 0) as total
       FROM empleados e
       LEFT JOIN cajas c ON e.id = c.empleado_id
@@ -922,8 +937,7 @@ app.get("/reportes/admin", async (req, res) => {
       LIMIT 10
     `);
 
-     // 1. Productos más vendidos
-    const [productosVendidos] = await promiseDb.query(`
+    const [productosVendidos] = await db.query(`
       SELECT 
         p.descripcion,
         p.codigo,
@@ -938,8 +952,7 @@ app.get("/reportes/admin", async (req, res) => {
       LIMIT 10
     `);
 
-    // 2. Últimas facturas (detalle)
-    const [ultimasFacturas] = await promiseDb.query(`
+    const [ultimasFacturas] = await db.query(`
       SELECT 
         f.numero_factura,
         f.numero_control,
@@ -956,8 +969,7 @@ app.get("/reportes/admin", async (req, res) => {
       LIMIT 20
     `);
 
-    // 3. Compras por cliente
-    const [comprasPorCliente] = await promiseDb.query(`
+    const [comprasPorCliente] = await db.query(`
       SELECT 
         c.id,
         c.nombre,
@@ -992,8 +1004,6 @@ app.get("/reportes/admin", async (req, res) => {
 });
 
 // RUTAS PARA CLIENTES
-
-// === RUTA: Crear nuevo cliente ===
 app.post("/clientes", async (req, res) => {
   const { nombre, tipo_rif, numero_rif, correo, telefono, direccion, operador } = req.body;
 
@@ -1002,7 +1012,7 @@ app.post("/clientes", async (req, res) => {
   }
 
   try {
-    const [result] = await promiseDb.query(
+    const [result] = await db.query(
       "INSERT INTO clientes (nombre, tipo_rif, numero_rif, correo, telefono, direccion, operador) VALUES (?, ?, ?, ?, ?, ?, ?)",
       [nombre, tipo_rif, numero_rif, correo || null, telefono || null, direccion || null, operador || null]
     );
@@ -1025,18 +1035,16 @@ app.post("/clientes", async (req, res) => {
   }
 });
 
-// === RUTA: Actualizar cliente por ID ===
 app.put("/clientes/:id", async (req, res) => {
   const { id } = req.params;
   const { nombre, tipo_rif, numero_rif, correo, telefono, direccion, operador } = req.body;
 
-  // Validación básica
   if (!nombre || !tipo_rif || !numero_rif) {
     return res.status(400).json({ message: "Nombre, tipo y número de RIF son obligatorios." });
   }
 
   try {
-    const [result] = await promiseDb.query(
+    const [result] = await db.query(
       `UPDATE clientes 
        SET nombre = ?, tipo_rif = ?, numero_rif = ?, correo = ?, telefono = ?, direccion = ?, operador = ? 
        WHERE id = ?`,
@@ -1047,8 +1055,7 @@ app.put("/clientes/:id", async (req, res) => {
       return res.status(404).json({ message: "Cliente no encontrado." });
     }
 
-    // Devolver el cliente actualizado
-    const [rows] = await promiseDb.query("SELECT * FROM clientes WHERE id = ?", [id]);
+    const [rows] = await db.query("SELECT * FROM clientes WHERE id = ?", [id]);
     res.json(rows[0]);
   } catch (err) {
     console.error("Error al actualizar cliente:", err);
@@ -1056,25 +1063,21 @@ app.put("/clientes/:id", async (req, res) => {
   }
 });
 
-
-// === RUTA: Crear producto (solo admin/supervisor)
 app.post("/productos", async (req, res) => {
   const { rol } = req.body;
   const { codigo, descripcion, precio, cantidad } = req.body;
 
-  // ✅ Validar rol
   const rolValido = ["admin", "supervisor"].includes(rol?.trim().toLowerCase());
   if (!rolValido) {
     return res.status(403).json({ message: "Acceso denegado. Rol no autorizado." });
   }
 
-  // ✅ Validar datos del producto
   if (!codigo || !descripcion || typeof precio !== "number" || typeof cantidad !== "number") {
     return res.status(400).json({ message: "Datos incompletos o inválidos." });
   }
 
   try {
-    const [result] = await promiseDb.query(
+    const [result] = await db.query(
       "INSERT INTO productos (codigo, descripcion, precio, cantidad) VALUES (?, ?, ?, ?)",
       [codigo, descripcion, precio, cantidad]
     );
@@ -1092,12 +1095,10 @@ app.post("/productos", async (req, res) => {
   }
 });
 
-// === RUTA: Actualizar producto por ID (solo admin o supervisor) ===
 app.put("/productos/:id", async (req, res) => {
   const { id } = req.params;
   const { codigo, descripcion, precio, cantidad, rol } = req.body;
 
-  // ✅ 1. Validar rol
   const rolValido = ["admin", "supervisor"].includes(rol?.trim().toLowerCase());
   if (!rolValido) {
     return res.status(403).json({ 
@@ -1105,7 +1106,6 @@ app.put("/productos/:id", async (req, res) => {
     });
   }
 
-  // ✅ 2. Validar datos del producto
   if (!codigo || !descripcion) {
     return res.status(400).json({ 
       message: "Código y descripción son obligatorios." 
@@ -1126,28 +1126,24 @@ app.put("/productos/:id", async (req, res) => {
 
   let connection;
   try {
-    connection = await promiseDb.getConnection();
+    connection = await db.getConnection();
     await connection.beginTransaction();
 
-    // ✅ 3. Verificar que el producto exista
     const [rows] = await connection.query("SELECT * FROM productos WHERE id = ?", [id]);
     if (rows.length === 0) {
       throw new Error("Producto no encontrado.");
     }
 
-    // ✅ 4. Actualizar producto
     await connection.query(
       "UPDATE productos SET codigo = ?, descripcion = ?, precio = ?, cantidad = ? WHERE id = ?",
       [codigo, descripcion, precio, cantidad, id]
     );
 
-    // ✅ 5. Obtener producto actualizado
     const [actualizado] = await connection.query("SELECT * FROM productos WHERE id = ?", [id]);
 
     await connection.commit();
     connection.release();
 
-    // ✅ 6. Responder con el producto actualizado
     res.json({
       ...actualizado[0],
       precio: parseFloat(actualizado[0].precio),
@@ -1165,10 +1161,9 @@ app.put("/productos/:id", async (req, res) => {
   }
 });
 
-// Reporte de ventas por producto
 app.get("/reportes/ventas-producto", async (req, res) => {
   try {
-    const [rows] = await promiseDb.query(`
+    const [rows] = await db.query(`
       SELECT 
         p.id AS producto_id,
         p.codigo,
@@ -1186,17 +1181,13 @@ app.get("/reportes/ventas-producto", async (req, res) => {
   }
 });
 
-
-// === RUTA: Actualizar todos los precios (solo admin) ===
 app.post("/productos/actualizar-precios", async (req, res) => {
   const { porcentaje, tipo, rol } = req.body;
 
-  // ✅ Validar rol
   if (!["admin"].includes(rol?.trim().toLowerCase())) {
     return res.status(403).json({ message: "Acceso denegado. Solo el admin puede realizar esta acción." });
   }
 
-  // ✅ Validar datos
   const numPorcentaje = parseFloat(porcentaje);
   if (isNaN(numPorcentaje) || numPorcentaje < 0 || numPorcentaje > 100) {
     return res.status(400).json({ message: "Porcentaje inválido. Debe estar entre 0 y 100." });
@@ -1208,10 +1199,9 @@ app.post("/productos/actualizar-precios", async (req, res) => {
 
   let connection;
   try {
-    connection = await promiseDb.getConnection();
+    connection = await db.getConnection();
     await connection.beginTransaction();
 
-    // ✅ Obtener todos los productos antes de actualizar
     const [productos] = await connection.query("SELECT id, precio FROM productos");
     if (productos.length === 0) {
       await connection.commit();
@@ -1242,14 +1232,13 @@ app.post("/productos/actualizar-precios", async (req, res) => {
   }
 });
 
-// === RUTA: Anular factura y devolver inventario ===
 app.put("/facturas/:id/anular", async (req, res) => {
   const { id } = req.params;
   let connection;
   try {
-    connection = await promiseDb.getConnection();
+    connection = await db.getConnection();
     await connection.beginTransaction();
-    // 1. Verificar que la factura exista y su estado actual
+    
     const [facturaRows] = await connection.query(
       "SELECT id, estado FROM facturas WHERE id = ? FOR UPDATE",
       [id]
@@ -1261,7 +1250,7 @@ app.put("/facturas/:id/anular", async (req, res) => {
     if (factura.estado === "sin pago") {
       return res.status(400).json({ message: "La factura ya está anulada." });
     }
-    // 2. Obtener los productos de la factura
+
     const [detalles] = await connection.query(
       "SELECT producto_id, cantidad FROM factura_detalle WHERE factura_id = ?",
       [id]
@@ -1270,7 +1259,6 @@ app.put("/facturas/:id/anular", async (req, res) => {
       return res.status(400).json({ message: "No hay productos en esta factura." });
     }
 
-    // 3. Devolver el inventario (sumar cantidad a productos)
     for (const detalle of detalles) {
       await connection.query(
         "UPDATE productos SET cantidad = cantidad + ? WHERE id = ?",
@@ -1278,13 +1266,11 @@ app.put("/facturas/:id/anular", async (req, res) => {
       );
     }
 
-    // 4. Actualizar el estado de la factura
     await connection.query(
       "UPDATE facturas SET estado = 'sin pago' WHERE id = ?",
       [id]
     );
 
-    // 5. Confirmar transacción
     await connection.commit();
 
     res.json({
@@ -1304,7 +1290,6 @@ app.put("/facturas/:id/anular", async (req, res) => {
   }
 });
 
-// Ruta /buscar
 app.get("/buscar", async (req, res) => {
   const { q } = req.query;
   if (!q || q.trim().length < 2) {
@@ -1312,8 +1297,7 @@ app.get("/buscar", async (req, res) => {
   }
   const searchTerm = `%${q.trim()}%`;
   try {
-    // Buscar productos
-    const [productos] = await promiseDb.query(
+    const [productos] = await db.query(
       `SELECT 
         'producto' AS tipo,
         id,
@@ -1327,8 +1311,7 @@ app.get("/buscar", async (req, res) => {
       [searchTerm, searchTerm]
     );
 
-    // Buscar clientes (solo por nombre y numero_rif)
-    const [clientes] = await promiseDb.query(
+    const [clientes] = await db.query(
       `SELECT 
         'cliente' AS tipo,
         id,
@@ -1365,12 +1348,11 @@ app.get("/buscar", async (req, res) => {
   }
 });
 
-// Ruta: POST /logs/precio
 app.post("/logs/precio", async (req, res) => {
   const { empleado_id, empleado_nombre, accion, porcentaje, total_productos_afectados } = req.body;
 
   try {
-    await promiseDb.query(
+    await db.query(
       `INSERT INTO precio_logs 
        (empleado_id, empleado_nombre, accion, porcentaje, total_productos_afectados) 
        VALUES (?, ?, ?, ?, ?)`,
@@ -1383,10 +1365,9 @@ app.post("/logs/precio", async (req, res) => {
   }
 });
 
-// === RUTA: Obtener logs de cambios de precios ===
 app.get("/logs/precio", async (req, res) => {
   try {
-    const [rows] = await promiseDb.query(`
+    const [rows] = await db.query(`
       SELECT 
         id,
         empleado_id,
@@ -1399,7 +1380,6 @@ app.get("/logs/precio", async (req, res) => {
       ORDER BY fecha DESC
     `);
 
-    // Formatear fechas y asegurar tipos de datos
     const logs = rows.map(log => ({
       ...log,
       fecha: new Date(log.fecha).toLocaleString('es-VE', {
@@ -1419,6 +1399,55 @@ app.get("/logs/precio", async (req, res) => {
   }
 });
 
+app.get("/impuestos/pendientes", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT 
+        i.id,
+        i.factura_id,
+        f.numero_factura,
+        f.fecha,
+        c.nombre AS cliente_nombre,
+        i.monto_iva,
+        i.estado,
+        i.fecha_registro,
+        i.fecha_pago  
+      FROM impuestos i
+      JOIN facturas f ON i.factura_id = f.id
+      JOIN clientes c ON f.cliente_id = c.id
+      WHERE i.estado = 'pendiente'
+      ORDER BY i.fecha_registro DESC
+    `);
+
+    res.json(rows);
+  } catch (error) {
+    console.error("Error al obtener impuestos pendientes:", error);
+    res.status(500).json({ message: "Error al cargar impuestos." });
+  }
+});
+
+app.post("/impuestos/pagar", async (req, res) => {
+  const { impuestoIds } = req.body;
+
+  if (!Array.isArray(impuestoIds) || impuestoIds.length === 0) {
+    return res.status(400).json({ message: "IDs de impuestos inválidos." });
+  }
+
+  try {
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    await db.query(
+      `UPDATE impuestos 
+       SET estado = 'pagado', fecha_pago = ? 
+       WHERE id IN (?) AND estado = 'pendiente'`,
+      [now, [impuestoIds]]
+    );
+
+    res.json({ message: "Impuestos marcados como pagados." });
+  } catch (error) {
+    console.error("Error al pagar impuestos:", error);
+    res.status(500).json({ message: "Error al procesar el pago." });
+  }
+});
 
 // ✅ Iniciar servidor
 const startServer = async () => {

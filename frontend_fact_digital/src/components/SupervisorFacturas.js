@@ -11,7 +11,7 @@ function SupervisorFacturas() {
   const [filtroEstado, setFiltroEstado] = useState("todas");
   const [filtroCaja, setFiltroCaja] = useState("");
   const [paginaActual, setPaginaActual] = useState(1);
-  const facturasPorPagina = 15;
+  const facturasPorPagina = 6;
 
   useEffect(() => {
     const cargarFacturas = async () => {

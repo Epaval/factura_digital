@@ -1,10 +1,10 @@
-// src/components/AdminDashboard.js
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { Pie } from "react-chartjs-2";
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from "chart.js";
 import "./AdminDashboard.css";
-import ActualizarPreciosModal from "./ActualizarPreciosModal"; // ✅ Importa el modal
+import ActualizarPreciosModal from "./ActualizarPreciosModal";
+import PagoImpuestos from "./PagoImpuestos";
 
 // Registrar componentes de Chart.js
 ChartJS.register(ArcElement, Tooltip, Legend);
@@ -13,9 +13,15 @@ function AdminDashboard({ empleado }) {
   const [reportes, setReportes] = useState(null);
   const [cargando, setCargando] = useState(true);
   const [filtroCliente, setFiltroCliente] = useState("");
-  
+
   // ✅ Estado para el modal de actualización de precios
   const [mostrarModalActualizarPrecios, setMostrarModalActualizarPrecios] = useState(false);
+
+  // Paginación para cada tabla
+  const [paginaCompras, setPaginaCompras] = useState(1);
+  const [paginaProductos, setPaginaProductos] = useState(1);
+  const [paginaFacturas, setPaginaFacturas] = useState(1);
+  const [paginaEmpleados, setPaginaEmpleados] = useState(1);
 
   // Función segura para formatear números
   const formatNumber = (value) => {
@@ -44,9 +50,8 @@ function AdminDashboard({ empleado }) {
     const cargarReportes = async () => {
       try {
         const res = await axios.get("http://localhost:5000/reportes/admin");
-
-        // Aseguramos que todos los valores sean números
         const data = res.data;
+
         setReportes({
           totalDiario: parseFloat(data.totalDiario) || 0,
           totalSemanal: parseFloat(data.totalSemanal) || 0,
@@ -62,7 +67,6 @@ function AdminDashboard({ empleado }) {
         });
       } catch (err) {
         console.error("Error al cargar reportes:", err);
-        // Fallback seguro en caso de error
         setReportes({
           totalDiario: 0,
           totalSemanal: 0,
@@ -95,20 +99,13 @@ function AdminDashboard({ empleado }) {
     );
   }
 
-  // ✅ Datos para el gráfico de torta (CORREGIDO: data en minúscula)
+  // ✅ Datos para el gráfico de torta
   const dataChart = {
     labels: reportes.pagosPorTipo.map((p) => p.nombre),
     datasets: [
       {
-        data: reportes.pagosPorTipo.map((p) => parseFloat(p.total)), // ✅ data, no Data
-        backgroundColor: [
-          "#4CAF50", // Efectivo
-          "#2196F3", // Transferencia
-          "#FF9800", // Punto de venta
-          "#f44336", // Zelle
-          "#9C27B0", // Otros
-          "#00BCD4",
-        ],
+        data: reportes.pagosPorTipo.map((p) => parseFloat(p.total)),
+        backgroundColor: ["#4CAF50", "#2196F3", "#FF9800", "#f44336", "#9C27B0", "#00BCD4"],
         hoverOffset: 4,
       },
     ],
@@ -117,9 +114,7 @@ function AdminDashboard({ empleado }) {
   const opcionesChart = {
     responsive: true,
     plugins: {
-      legend: {
-        position: "top",
-      },
+      legend: { position: "top" },
       tooltip: {
         callbacks: {
           label: (context) => {
@@ -131,6 +126,32 @@ function AdminDashboard({ empleado }) {
       },
     },
   };
+
+  // Filtrado y paginación para Compras por Cliente
+  const comprasFiltradas = reportes.comprasPorCliente.filter(
+    (cliente) =>
+      cliente.nombre.toLowerCase().includes(filtroCliente.toLowerCase()) ||
+      cliente.numero_rif.includes(filtroCliente) ||
+      `${cliente.tipo_rif}-${cliente.numero_rif}`.includes(filtroCliente)
+  );
+
+  const comprasPaginadas = comprasFiltradas.slice((paginaCompras - 1) * 6, paginaCompras * 6);
+  const totalPaginasCompras = Math.ceil(comprasFiltradas.length / 6);
+
+  // Paginación Productos Más Vendidos
+  const productosPaginados = reportes.productosVendidos
+    .slice((paginaProductos - 1) * 6, paginaProductos * 6);
+  const totalPaginasProductos = Math.ceil(reportes.productosVendidos.length / 6);
+
+  // Paginación Últimas Facturas
+  const facturasPaginadas = reportes.ultimasFacturas
+    .slice((paginaFacturas - 1) * 6, paginaFacturas * 6);
+  const totalPaginasFacturas = Math.ceil(reportes.ultimasFacturas.length / 6);
+
+  // Paginación Top Empleados
+  const empleadosPaginados = reportes.facturacionPorEmpleado
+    .slice((paginaEmpleados - 1) * 6, paginaEmpleados * 6);
+  const totalPaginasEmpleados = Math.ceil(reportes.facturacionPorEmpleado.length / 6);
 
   return (
     <div className="admin-dashboard p-4">
@@ -146,7 +167,7 @@ function AdminDashboard({ empleado }) {
         </div>
       </div>
 
-      {/* Botón: Actualizar Precios (solo para admin) */}
+      {/* Botón: Actualizar Precios (solo admin) */}
       {empleado?.rol === "admin" && (
         <div className="mb-4 text-center">
           <button
@@ -231,7 +252,7 @@ function AdminDashboard({ empleado }) {
         {/* Compras por cliente */}
         <div className="col-md-6">
           <div className="card shadow-sm">
-            <div className="card-header bg-info text-white">
+            <div className="card-header bg-info text-white d-flex justify-content-between align-items-center">
               <h5>👥 Compras por Cliente</h5>
             </div>
             <div className="card-body">
@@ -241,7 +262,10 @@ function AdminDashboard({ empleado }) {
                   className="form-control"
                   placeholder="Filtrar por CI, RIF o nombre..."
                   value={filtroCliente}
-                  onChange={(e) => setFiltroCliente(e.target.value)}
+                  onChange={(e) => {
+                    setFiltroCliente(e.target.value);
+                    setPaginaCompras(1);
+                  }}
                 />
               </div>
               <div className="table-responsive">
@@ -255,19 +279,8 @@ function AdminDashboard({ empleado }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {reportes.comprasPorCliente
-                      .filter(
-                        (cliente) =>
-                          cliente.nombre
-                            .toLowerCase()
-                            .includes(filtroCliente.toLowerCase()) ||
-                          cliente.numero_rif.includes(filtroCliente) ||
-                          `${cliente.tipo_rif}-${cliente.numero_rif}`.includes(
-                            filtroCliente
-                          )
-                      )
-                      .slice(0, 8)
-                      .map((c) => (
+                    {comprasPaginadas.length > 0 ? (
+                      comprasPaginadas.map((c) => (
                         <tr key={c.id}>
                           <td>{c.nombre}</td>
                           <td>
@@ -276,10 +289,53 @@ function AdminDashboard({ empleado }) {
                           <td>Bs.{formatNumber(c.total_comprado)}</td>
                           <td>{c.total_facturas}</td>
                         </tr>
-                      ))}
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan="4" className="text-muted text-center">
+                          No hay clientes que coincidan.
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
+
+              {/* Paginador */}
+              {totalPaginasCompras > 1 && (
+                <nav className="d-flex justify-content-center mt-3">
+                  <ul className="pagination pagination-sm">
+                    <li className={`page-item ${paginaCompras === 1 ? "disabled" : ""}`}>
+                      <button
+                        className="page-link"
+                        onClick={() => setPaginaCompras(paginaCompras - 1)}
+                        disabled={paginaCompras === 1}
+                      >
+                        Anterior
+                      </button>
+                    </li>
+                    {[...Array(totalPaginasCompras)].map((_, i) => (
+                      <li key={i + 1} className={`page-item ${paginaCompras === i + 1 ? "active" : ""}`}>
+                        <button
+                          className="page-link"
+                          onClick={() => setPaginaCompras(i + 1)}
+                        >
+                          {i + 1}
+                        </button>
+                      </li>
+                    ))}
+                    <li className={`page-item ${paginaCompras === totalPaginasCompras ? "disabled" : ""}`}>
+                      <button
+                        className="page-link"
+                        onClick={() => setPaginaCompras(paginaCompras + 1)}
+                        disabled={paginaCompras === totalPaginasCompras}
+                      >
+                        Siguiente
+                      </button>
+                    </li>
+                  </ul>
+                </nav>
+              )}
             </div>
           </div>
         </div>
@@ -289,7 +345,7 @@ function AdminDashboard({ empleado }) {
       <div className="row mb-4">
         <div className="col-12">
           <div className="card shadow-sm">
-            <div className="card-header bg-success text-white">
+            <div className="card-header bg-success text-white d-flex justify-content-between align-items-center">
               <h5>📦 Productos Más Vendidos</h5>
             </div>
             <div className="card-body">
@@ -304,8 +360,8 @@ function AdminDashboard({ empleado }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {reportes.productosVendidos.length > 0 ? (
-                      reportes.productosVendidos.map((p, i) => (
+                    {productosPaginados.length > 0 ? (
+                      productosPaginados.map((p, i) => (
                         <tr key={i}>
                           <td>{p.descripcion}</td>
                           <td>{p.codigo}</td>
@@ -325,6 +381,42 @@ function AdminDashboard({ empleado }) {
                   </tbody>
                 </table>
               </div>
+
+              {/* Paginador */}
+              {totalPaginasProductos > 1 && (
+                <nav className="d-flex justify-content-center mt-3">
+                  <ul className="pagination pagination-sm">
+                    <li className={`page-item ${paginaProductos === 1 ? "disabled" : ""}`}>
+                      <button
+                        className="page-link"
+                        onClick={() => setPaginaProductos(paginaProductos - 1)}
+                        disabled={paginaProductos === 1}
+                      >
+                        Anterior
+                      </button>
+                    </li>
+                    {[...Array(totalPaginasProductos)].map((_, i) => (
+                      <li key={i + 1} className={`page-item ${paginaProductos === i + 1 ? "active" : ""}`}>
+                        <button
+                          className="page-link"
+                          onClick={() => setPaginaProductos(i + 1)}
+                        >
+                          {i + 1}
+                        </button>
+                      </li>
+                    ))}
+                    <li className={`page-item ${paginaProductos === totalPaginasProductos ? "disabled" : ""}`}>
+                      <button
+                        className="page-link"
+                        onClick={() => setPaginaProductos(paginaProductos + 1)}
+                        disabled={paginaProductos === totalPaginasProductos}
+                      >
+                        Siguiente
+                      </button>
+                    </li>
+                  </ul>
+                </nav>
+              )}
             </div>
           </div>
         </div>
@@ -334,7 +426,7 @@ function AdminDashboard({ empleado }) {
       <div className="row mb-4">
         <div className="col-12">
           <div className="card shadow-sm">
-            <div className="card-header bg-primary text-white">
+            <div className="card-header bg-primary text-white d-flex justify-content-between align-items-center">
               <h5>📄 Últimas Facturas</h5>
             </div>
             <div className="card-body">
@@ -351,8 +443,8 @@ function AdminDashboard({ empleado }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {reportes.ultimasFacturas.length > 0 ? (
-                      reportes.ultimasFacturas.map((f) => (
+                    {facturasPaginadas.length > 0 ? (
+                      facturasPaginadas.map((f) => (
                         <tr key={f.numero_factura}>
                           <td>{f.numero_factura}</td>
                           <td>{f.numero_control}</td>
@@ -376,20 +468,56 @@ function AdminDashboard({ empleado }) {
                   </tbody>
                 </table>
               </div>
+
+              {/* Paginador */}
+              {totalPaginasFacturas > 1 && (
+                <nav className="d-flex justify-content-center mt-3">
+                  <ul className="pagination pagination-sm">
+                    <li className={`page-item ${paginaFacturas === 1 ? "disabled" : ""}`}>
+                      <button
+                        className="page-link"
+                        onClick={() => setPaginaFacturas(paginaFacturas - 1)}
+                        disabled={paginaFacturas === 1}
+                      >
+                        Anterior
+                      </button>
+                    </li>
+                    {[...Array(totalPaginasFacturas)].map((_, i) => (
+                      <li key={i + 1} className={`page-item ${paginaFacturas === i + 1 ? "active" : ""}`}>
+                        <button
+                          className="page-link"
+                          onClick={() => setPaginaFacturas(i + 1)}
+                        >
+                          {i + 1}
+                        </button>
+                      </li>
+                    ))}
+                    <li className={`page-item ${paginaFacturas === totalPaginasFacturas ? "disabled" : ""}`}>
+                      <button
+                        className="page-link"
+                        onClick={() => setPaginaFacturas(paginaFacturas + 1)}
+                        disabled={paginaFacturas === totalPaginasFacturas}
+                      >
+                        Siguiente
+                      </button>
+                    </li>
+                  </ul>
+                </nav>
+              )}
             </div>
           </div>
         </div>
       </div>
 
       {/* Top empleados */}
-      <div className="row">
+      <div className="row mb-4">
         <div className="col-12">
           <div className="card shadow-sm">
-            <div className="card-header bg-secondary text-white">
+            <div className="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
               <h5>👤 Top 10 Empleados por Facturación</h5>
             </div>
             <div className="card-body">
-              {reportes.facturacionPorEmpleado.length > 0 ? (
+              {empleadosPaginados.length > 0 ? (
                 <table className="table table-hover table-striped">
                   <thead className="table-light">
                     <tr>
@@ -399,9 +527,9 @@ function AdminDashboard({ empleado }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {reportes.facturacionPorEmpleado.map((emp, index) => (
+                    {empleadosPaginados.map((emp, index) => (
                       <tr key={emp.nombre}>
-                        <td>{index + 1}</td>
+                        <td>{(paginaEmpleados - 1) * 6 + index + 1}</td>
                         <td>
                           {emp.nombre} {emp.apellido}
                         </td>
@@ -417,6 +545,42 @@ function AdminDashboard({ empleado }) {
                   No hay empleados con facturación registrada.
                 </p>
               )}
+
+              {/* Paginador */}
+              {totalPaginasEmpleados > 1 && (
+                <nav className="d-flex justify-content-center mt-3">
+                  <ul className="pagination pagination-sm">
+                    <li className={`page-item ${paginaEmpleados === 1 ? "disabled" : ""}`}>
+                      <button
+                        className="page-link"
+                        onClick={() => setPaginaEmpleados(paginaEmpleados - 1)}
+                        disabled={paginaEmpleados === 1}
+                      >
+                        Anterior
+                      </button>
+                    </li>
+                    {[...Array(totalPaginasEmpleados)].map((_, i) => (
+                      <li key={i + 1} className={`page-item ${paginaEmpleados === i + 1 ? "active" : ""}`}>
+                        <button
+                          className="page-link"
+                          onClick={() => setPaginaEmpleados(i + 1)}
+                        >
+                          {i + 1}
+                        </button>
+                      </li>
+                    ))}
+                    <li className={`page-item ${paginaEmpleados === totalPaginasEmpleados ? "disabled" : ""}`}>
+                      <button
+                        className="page-link"
+                        onClick={() => setPaginaEmpleados(paginaEmpleados + 1)}
+                        disabled={paginaEmpleados === totalPaginasEmpleados}
+                      >
+                        Siguiente
+                      </button>
+                    </li>
+                  </ul>
+                </nav>
+              )}
             </div>
           </div>
         </div>
@@ -428,6 +592,15 @@ function AdminDashboard({ empleado }) {
           onClose={() => setMostrarModalActualizarPrecios(false)}
           onActualizar={handleActualizarPrecios}
         />
+      )}
+
+      {/* Pago de Impuestos (solo admin) */}
+      {empleado?.rol === "admin" && (
+        <div className="row mt-5">
+          <div className="col-12">
+            <PagoImpuestos />
+          </div>
+        </div>
       )}
     </div>
   );
