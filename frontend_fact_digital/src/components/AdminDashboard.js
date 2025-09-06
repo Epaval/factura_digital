@@ -5,6 +5,7 @@ import { Chart as ChartJS, ArcElement, Tooltip, Legend } from "chart.js";
 import "./AdminDashboard.css";
 import ActualizarPreciosModal from "./ActualizarPreciosModal";
 import PagoImpuestos from "./PagoImpuestos";
+import GestionarEmpleados from "./GestionarEmpleados";
 
 // Registrar componentes de Chart.js
 ChartJS.register(ArcElement, Tooltip, Legend);
@@ -305,7 +306,11 @@ function AdminDashboard({ empleado }) {
               {totalPaginasCompras > 1 && (
                 <nav className="d-flex justify-content-center mt-3">
                   <ul className="pagination pagination-sm">
-                    <li className={`page-item ${paginaCompras === 1 ? "disabled" : ""}`}>
+                    <li
+                      className={`page-item ${
+                        paginaCompras === 1 ? "disabled" : ""
+                      }`}
+                    >
                       <button
                         className="page-link"
                         onClick={() => setPaginaCompras(paginaCompras - 1)}
@@ -315,7 +320,12 @@ function AdminDashboard({ empleado }) {
                       </button>
                     </li>
                     {[...Array(totalPaginasCompras)].map((_, i) => (
-                      <li key={i + 1} className={`page-item ${paginaCompras === i + 1 ? "active" : ""}`}>
+                      <li
+                        key={i + 1}
+                        className={`page-item ${
+                          paginaCompras === i + 1 ? "active" : ""
+                        }`}
+                      >
                         <button
                           className="page-link"
                           onClick={() => setPaginaCompras(i + 1)}
@@ -324,7 +334,11 @@ function AdminDashboard({ empleado }) {
                         </button>
                       </li>
                     ))}
-                    <li className={`page-item ${paginaCompras === totalPaginasCompras ? "disabled" : ""}`}>
+                    <li
+                      className={`page-item ${
+                        paginaCompras === totalPaginasCompras ? "disabled" : ""
+                      }`}
+                    >
                       <button
                         className="page-link"
                         onClick={() => setPaginaCompras(paginaCompras + 1)}
@@ -386,7 +400,11 @@ function AdminDashboard({ empleado }) {
               {totalPaginasProductos > 1 && (
                 <nav className="d-flex justify-content-center mt-3">
                   <ul className="pagination pagination-sm">
-                    <li className={`page-item ${paginaProductos === 1 ? "disabled" : ""}`}>
+                    <li
+                      className={`page-item ${
+                        paginaProductos === 1 ? "disabled" : ""
+                      }`}
+                    >
                       <button
                         className="page-link"
                         onClick={() => setPaginaProductos(paginaProductos - 1)}
@@ -396,7 +414,12 @@ function AdminDashboard({ empleado }) {
                       </button>
                     </li>
                     {[...Array(totalPaginasProductos)].map((_, i) => (
-                      <li key={i + 1} className={`page-item ${paginaProductos === i + 1 ? "active" : ""}`}>
+                      <li
+                        key={i + 1}
+                        className={`page-item ${
+                          paginaProductos === i + 1 ? "active" : ""
+                        }`}
+                      >
                         <button
                           className="page-link"
                           onClick={() => setPaginaProductos(i + 1)}
@@ -405,7 +428,13 @@ function AdminDashboard({ empleado }) {
                         </button>
                       </li>
                     ))}
-                    <li className={`page-item ${paginaProductos === totalPaginasProductos ? "disabled" : ""}`}>
+                    <li
+                      className={`page-item ${
+                        paginaProductos === totalPaginasProductos
+                          ? "disabled"
+                          : ""
+                      }`}
+                    >
                       <button
                         className="page-link"
                         onClick={() => setPaginaProductos(paginaProductos + 1)}
@@ -473,7 +502,11 @@ function AdminDashboard({ empleado }) {
               {totalPaginasFacturas > 1 && (
                 <nav className="d-flex justify-content-center mt-3">
                   <ul className="pagination pagination-sm">
-                    <li className={`page-item ${paginaFacturas === 1 ? "disabled" : ""}`}>
+                    <li
+                      className={`page-item ${
+                        paginaFacturas === 1 ? "disabled" : ""
+                      }`}
+                    >
                       <button
                         className="page-link"
                         onClick={() => setPaginaFacturas(paginaFacturas - 1)}
@@ -483,7 +516,12 @@ function AdminDashboard({ empleado }) {
                       </button>
                     </li>
                     {[...Array(totalPaginasFacturas)].map((_, i) => (
-                      <li key={i + 1} className={`page-item ${paginaFacturas === i + 1 ? "active" : ""}`}>
+                      <li
+                        key={i + 1}
+                        className={`page-item ${
+                          paginaFacturas === i + 1 ? "active" : ""
+                        }`}
+                      >
                         <button
                           className="page-link"
                           onClick={() => setPaginaFacturas(i + 1)}
@@ -492,7 +530,13 @@ function AdminDashboard({ empleado }) {
                         </button>
                       </li>
                     ))}
-                    <li className={`page-item ${paginaFacturas === totalPaginasFacturas ? "disabled" : ""}`}>
+                    <li
+                      className={`page-item ${
+                        paginaFacturas === totalPaginasFacturas
+                          ? "disabled"
+                          : ""
+                      }`}
+                    >
                       <button
                         className="page-link"
                         onClick={() => setPaginaFacturas(paginaFacturas + 1)}
@@ -550,7 +594,11 @@ function AdminDashboard({ empleado }) {
               {totalPaginasEmpleados > 1 && (
                 <nav className="d-flex justify-content-center mt-3">
                   <ul className="pagination pagination-sm">
-                    <li className={`page-item ${paginaEmpleados === 1 ? "disabled" : ""}`}>
+                    <li
+                      className={`page-item ${
+                        paginaEmpleados === 1 ? "disabled" : ""
+                      }`}
+                    >
                       <button
                         className="page-link"
                         onClick={() => setPaginaEmpleados(paginaEmpleados - 1)}
@@ -560,7 +608,12 @@ function AdminDashboard({ empleado }) {
                       </button>
                     </li>
                     {[...Array(totalPaginasEmpleados)].map((_, i) => (
-                      <li key={i + 1} className={`page-item ${paginaEmpleados === i + 1 ? "active" : ""}`}>
+                      <li
+                        key={i + 1}
+                        className={`page-item ${
+                          paginaEmpleados === i + 1 ? "active" : ""
+                        }`}
+                      >
                         <button
                           className="page-link"
                           onClick={() => setPaginaEmpleados(i + 1)}
@@ -569,7 +622,13 @@ function AdminDashboard({ empleado }) {
                         </button>
                       </li>
                     ))}
-                    <li className={`page-item ${paginaEmpleados === totalPaginasEmpleados ? "disabled" : ""}`}>
+                    <li
+                      className={`page-item ${
+                        paginaEmpleados === totalPaginasEmpleados
+                          ? "disabled"
+                          : ""
+                      }`}
+                    >
                       <button
                         className="page-link"
                         onClick={() => setPaginaEmpleados(paginaEmpleados + 1)}
@@ -599,6 +658,14 @@ function AdminDashboard({ empleado }) {
         <div className="row mt-5">
           <div className="col-12">
             <PagoImpuestos />
+          </div>
+        </div>
+      )}
+
+      {empleado?.rol === "admin" && (
+        <div className="row mt-5">
+          <div className="col-12">            
+            <GestionarEmpleados />
           </div>
         </div>
       )}

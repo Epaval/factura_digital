@@ -1365,6 +1365,8 @@ app.post("/logs/precio", async (req, res) => {
   }
 });
 
+
+
 app.get("/logs/precio", async (req, res) => {
   try {
     const [rows] = await db.query(`
@@ -1448,6 +1450,45 @@ app.post("/impuestos/pagar", async (req, res) => {
     res.status(500).json({ message: "Error al procesar el pago." });
   }
 });
+
+//RUTAS PARA EMPLEADOS =======================
+
+app.get("/empleados", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT id, nombre, apellido, ci, ficha, telefono, rol, created_at 
+      FROM empleados 
+      ORDER BY created_at DESC
+    `);
+    res.json(rows);
+  } catch (error) {
+    console.error("Error al obtener empleados:", error);
+    res.status(500).json({ message: "Error al cargar empleados." });
+  }
+});
+
+
+app.put("/empleados/:id/rol", async (req, res) => {
+  const { id } = req.params;
+  const { rol } = req.body;
+
+  const validRoles = ['cajero', 'supervisor', 'admin', 'desactivado'];
+  if (!validRoles.includes(rol)) {
+    return res.status(400).json({ message: "Rol no válido." });
+  }
+
+  try {
+    await db.query("UPDATE empleados SET rol = ? WHERE id = ?", [rol, id]);
+    res.json({ message: "Rol actualizado correctamente." });
+  } catch (error) {
+    console.error("Error al actualizar rol:", error);
+    res.status(500).json({ message: "Error al actualizar rol." });
+  }
+});
+
+
+
+
 
 // ✅ Iniciar servidor
 const startServer = async () => {
