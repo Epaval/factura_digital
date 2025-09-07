@@ -43,6 +43,17 @@ function LoginCaja({ onCajaAbierta }) {
     } finally {
       setCargando(false);
     }
+    // Después de guardar en localStorage
+  localStorage.setItem("caja_id", cajaSeleccionada);
+  localStorage.setItem("empleado_id", empleado.id);
+  localStorage.setItem("empleado_data", JSON.stringify(empleado));
+
+  window.iniciarNuevaSesion = () => {
+  const channel = new BroadcastChannel('sesion_caja');
+  channel.postMessage({ type: 'NUEVA_SESION' });
+};
+
+  onCajaAbierta(empleado, Number(cajaSeleccionada));
   };
 
   if (empleado) {

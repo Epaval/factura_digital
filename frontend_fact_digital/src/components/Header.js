@@ -123,38 +123,8 @@ const Header = ({
             >
               <FiUsers size={16} />
               <span className="d-none d-sm-inline"> Nuevo Cliente</span>
-            </button>
-
-            {esSupervisor() && (
-              <button
-                className="btn btn-outline-light btn-sm d-flex align-items-center gap-1 px-3 py-2"
-                onClick={onConsultarProductos}
-                title="Gestionar Productos"
-              >
-                <FiPackage size={16} />
-                <span className="d-none d-sm-inline"> Productos</span>
-              </button>
-            )}
-
-            <button
-              className="btn btn-outline-light btn-sm d-flex align-items-center gap-1 px-3 py-2"
-              onClick={onHistorialFacturas}
-              title="Historial de Facturas"
-            >
-              <FiFileText size={16} />
-              <span className="d-none d-sm-inline"> Historial</span>
-            </button>
-
-            {esSupervisor() && (
-              <button
-                className="btn btn-outline-light btn-sm d-flex align-items-center gap-1 px-3 py-2"
-                onClick={onVerInventario}
-                title="Inventario de Productos"
-              >
-                <FiBox size={16} />
-                <span className="d-none d-sm-inline"> Inventario</span>
-              </button>
-            )}
+            </button>          
+         
           </div>
 
           {/* Separador visual en móvil */}
@@ -164,48 +134,7 @@ const Header = ({
 
           {/* Acciones de supervisor/admin */}
           {esSupervisor() && (
-            <div className="d-flex flex-wrap justify-content-center gap-2">
-              <button
-                className="btn btn-light btn-sm text-primary d-flex align-items-center gap-1 px-3 py-2"
-                onClick={onVerDashboard}
-                title="Dashboard de Cajas"
-              >
-                <FiBarChart2 size={16} />
-                <span className="d-none d-sm-inline"> Dashboard Cajas</span>
-              </button>
-
-              <button
-                className="btn btn-light btn-sm text-dark d-flex align-items-center gap-1 px-3 py-2"
-                onClick={onVerDashboardAdmin}
-                title="Dashboard Administrativo"
-              >
-                <FiDatabase size={16} />
-                <span className="d-none d-sm-inline"> Admin</span>
-              </button>
-
-              <button
-                className="btn btn-light btn-sm d-flex align-items-center gap-1 px-3 py-2"
-                onClick={onVerTodasFacturas}
-                title="Ver Todas las Facturas"
-              >
-                <FiFileText size={16} />
-                <span className="d-none d-sm-inline"> Todas Facturas</span>
-              </button>
-
-              {/* ✅ Actualizar Precios (solo admin) */}
-              {empleado?.rol === "admin" && (
-                <button
-                  className="btn btn-danger btn-sm d-flex align-items-center gap-1 px-3 py-2"
-                  onClick={onActualizarPreciosMasivo}
-                  title="Actualizar precios masivamente"
-                >
-                  <FiTag size={16} />
-                  <span className="d-none d-sm-inline">
-                    {" "}
-                    Actualizar Precios
-                  </span>
-                </button>
-              )}
+            <div className="d-flex flex-wrap justify-content-center gap-2">                                  
             </div>
           )}
         </nav>

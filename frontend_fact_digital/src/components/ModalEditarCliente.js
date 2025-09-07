@@ -1,14 +1,70 @@
-import React from "react";
+// src/components/ModalEditarCliente.js
+import React, { useState } from "react";
+import {
+  FaUserEdit,
+  FaIdCard,
+  FaEnvelope,
+  FaPhone,
+  FaMapMarkerAlt,
+  FaSave,
+  FaTimes,
+  FaExclamationCircle,
+  FaCheckCircle,
+} from "react-icons/fa";
 
 const ModalEditarCliente = ({ mostrar, onCerrar, onGuardar, clienteExistente }) => {
-  const [nombre, setNombre] = React.useState(clienteExistente ? clienteExistente.nombre : "");
-  const [tipoRif, setTipoRif] = React.useState(clienteExistente ? clienteExistente.tipo_rif : "V");
-  const [numeroRif, setNumeroRif] = React.useState(clienteExistente ? clienteExistente.numero_rif : "");
-  const [correo, setCorreo] = React.useState(clienteExistente ? clienteExistente.correo : "");
-  const [operador, setOperador] = React.useState(clienteExistente ? clienteExistente.operador.toString() : "");
-  const [telefono, setTelefono] = React.useState(clienteExistente ? clienteExistente.telefono.toString() : "");
-  const [direccion, setDireccion] = React.useState(clienteExistente ? clienteExistente.direccion : "");
+  const [nombre, setNombre] = useState(
+    clienteExistente?.nombre || ""
+  );
+  const [tipoRif, setTipoRif] = useState(
+    clienteExistente?.tipo_rif || "V"
+  );
+  const [numeroRif, setNumeroRif] = useState(
+    clienteExistente?.numero_rif || ""
+  );
+  const [correo, setCorreo] = useState(
+    clienteExistente?.correo || ""
+  );
+  const [operador, setOperador] = useState(
+    clienteExistente?.operador?.toString() || ""
+  );
+  const [telefono, setTelefono] = useState(
+    clienteExistente?.telefono?.toString() || ""
+  );
+  const [direccion, setDireccion] = useState(
+    clienteExistente?.direccion || ""
+  );
 
+  const [errores, setErrores] = useState({});
+
+  // Validación en tiempo real
+  const validar = () => {
+    const nuevosErrores = {};
+
+    if (!nombre.trim()) nuevosErrores.nombre = "El nombre es obligatorio.";
+    else if (nombre.trim().split(" ").length < 2)
+      nuevosErrores.nombre = "Debe incluir nombre y apellido.";
+
+    if (!numeroRif.trim()) nuevosErrores.numeroRif = "El número RIF es obligatorio.";
+    else if (!/^\d{9,10}$/.test(numeroRif))
+      nuevosErrores.numeroRif = "Debe tener entre 9 y 10 dígitos.";
+
+    if (!correo.trim()) nuevosErrores.correo = "El correo es obligatorio.";
+    else if (!/\S+@\S+\.\S+/.test(correo))
+      nuevosErrores.correo = "Correo no válido.";
+
+    if (!operador) nuevosErrores.operador = "Seleccione un código.";
+    if (!telefono) nuevosErrores.telefono = "El teléfono es obligatorio.";
+    else if (telefono.toString().length < 7)
+      nuevosErrores.telefono = "Teléfono debe tener al menos 7 dígitos.";
+
+    if (!direccion.trim()) nuevosErrores.direccion = "La dirección es obligatoria.";
+
+    setErrores(nuevosErrores);
+    return Object.keys(nuevosErrores).length === 0;
+  };
+
+  // Formatear nombre (primera letra de cada palabra en mayúscula)
   const handleNombreChange = (e) => {
     const value = e.target.value;
     const formattedValue = value
@@ -18,140 +74,208 @@ const ModalEditarCliente = ({ mostrar, onCerrar, onGuardar, clienteExistente }) 
     setNombre(formattedValue);
   };
 
+  // Formatear dirección
+  const handleDireccionChange = (e) => {
+    const value = e.target.value;
+    const formattedValue = value
+      .split(" ")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(" ");
+    setDireccion(formattedValue);
+  };
+
+  // Guardar cliente
   const handleGuardar = () => {
-    const clienteActualizado = {
-      ...clienteExistente, // Mantén los datos existentes
-      nombre,
-      tipo_rif: tipoRif,
-      numero_rif: numeroRif,
-      correo,
-      operador: parseInt(operador),
-      telefono: parseInt(telefono),
-      direccion,
-    };
-    onGuardar(clienteActualizado);
-    onCerrar();
+    if (validar()) {
+      const clienteActualizado = {
+        ...clienteExistente,
+        nombre,
+        tipo_rif: tipoRif,
+        numero_rif: numeroRif,
+        correo,
+        operador: parseInt(operador),
+        telefono: parseInt(telefono),
+        direccion,
+      };
+      onGuardar(clienteActualizado);
+      onCerrar();
+    }
   };
 
   if (!mostrar) return null;
 
   return (
     <div
-      className="modal"
+      className="modal show"
       tabIndex="-1"
       role="dialog"
-      style={{ display: "block", backgroundColor: "rgba(0, 0, 0, 0.5)" }}
+      style={{ display: "block", backgroundColor: "rgba(0,0,0,0.5)" }}
+      onClick={onCerrar}
     >
-      <div className="modal-dialog modal-lg" role="document">
-        <div className="modal-content">
-          <div className="modal-header bg-primary text-white">
-            <h5 className="modal-title">Editar Cliente</h5>
+      <div
+        className="modal-dialog modal-lg"
+        role="document"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="modal-content shadow-lg border-0 rounded-3">
+          <div className="modal-header bg-primary text-white d-flex align-items-center">
+            <FaUserEdit className="me-2" /> <h5 className="modal-title">Editar Cliente</h5>
             <button
               type="button"
-              className="btn-close btn-close-white"
+              className="btn-close btn-close-white ms-auto"
               onClick={onCerrar}
             ></button>
           </div>
+
           <div className="modal-body">
             <form>
+              {/* Nombre */}
               <div className="mb-3">
-                <label className="form-label">Nombre</label>
+                <label className="form-label d-flex align-items-center">
+                  <FaUserEdit className="me-2 text-primary" /> Nombre y Apellido
+                </label>
                 <input
                   type="text"
-                  className="form-control"
+                  className={`form-control ${errores.nombre ? "is-invalid" : ""}`}
                   value={nombre}
                   onChange={handleNombreChange}
-                  required
+                  onBlur={validar}
+                  placeholder="Ej: María González"
                 />
+                {errores.nombre && (
+                  <div className="invalid-feedback d-flex align-items-center">
+                    <FaExclamationCircle className="me-1" /> {errores.nombre}
+                  </div>
+                )}
               </div>
-              <div className="mb-3">
-                <label className="form-label">Tipo RIF</label>
-                <select
-                  className="form-select"
-                  value={tipoRif}
-                  onChange={(e) => setTipoRif(e.target.value)}
-                  required
-                >
-                  <option value="V">V</option>
-                  <option value="E">E</option>
-                  <option value="J">J</option>
-                </select>
+
+              {/* RIF */}
+              <div className="row g-3 mb-3">
+                <div className="col-md-3">
+                  <label className="form-label">Tipo RIF</label>
+                  <select
+                    className="form-select"
+                    value={tipoRif}
+                    onChange={(e) => setTipoRif(e.target.value)}
+                  >
+                    <option value="V">V</option>
+                    <option value="E">E</option>
+                    <option value="J">J</option>
+                  </select>
+                </div>
+                <div className="col-md-9">
+                  <label className="form-label d-flex align-items-center">
+                    <FaIdCard className="me-2 text-primary" /> Número RIF
+                  </label>
+                  <input
+                    type="text"
+                    className={`form-control ${errores.numeroRif ? "is-invalid" : ""}`}
+                    value={numeroRif}
+                    onChange={(e) => setNumeroRif(e.target.value.replace(/\D/g, ""))}
+                    onBlur={validar}
+                    placeholder="Ej: 12345678"
+                  />
+                  {errores.numeroRif && (
+                    <div className="invalid-feedback d-flex align-items-center">
+                      <FaExclamationCircle className="me-1" /> {errores.numeroRif}
+                    </div>
+                  )}
+                </div>
               </div>
+
+              {/* Correo */}
               <div className="mb-3">
-                <label className="form-label">Número RIF</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  value={numeroRif}
-                  onChange={(e) => setNumeroRif(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="mb-3">
-                <label className="form-label">Correo</label>
+                <label className="form-label d-flex align-items-center">
+                  <FaEnvelope className="me-2 text-primary" /> Correo Electrónico
+                </label>
                 <input
                   type="email"
-                  className="form-control"
+                  className={`form-control ${errores.correo ? "is-invalid" : ""}`}
                   value={correo}
                   onChange={(e) => setCorreo(e.target.value)}
-                  required
+                  onBlur={validar}
+                  placeholder="ejemplo@correo.com"
                 />
+                {errores.correo && (
+                  <div className="invalid-feedback d-flex align-items-center">
+                    <FaExclamationCircle className="me-1" /> {errores.correo}
+                  </div>
+                )}
               </div>
-              <div className="mb-3">
-                <label className="form-label">Código de Teléfono</label>
-                <select
-                  className="form-select"
-                  value={operador}
-                  onChange={(e) => setOperador(e.target.value)}
-                  required
-                >
-                  <option value="" disabled>
-                    Seleccione un código
-                  </option>
-                  <option value="0412">0412</option>
-                  <option value="0416">0416</option>
-                  <option value="0414">0414</option>
-                  <option value="0424">0424</option>
-                  <option value="0426">0426</option>
-                </select>
+
+              {/* Teléfono */}
+              <div className="row g-3 mb-3">
+                <div className="col-md-4">
+                  <label className="form-label d-flex align-items-center">
+                    <FaPhone className="me-2 text-primary" /> Código
+                  </label>
+                  <select
+                    className={`form-select ${errores.operador ? "is-invalid" : ""}`}
+                    value={operador}
+                    onChange={(e) => setOperador(e.target.value)}
+                    onBlur={validar}
+                  >
+                    <option value="" disabled>
+                      Seleccione
+                    </option>
+                    <option value="0412">0412</option>
+                    <option value="0416">0416</option>
+                    <option value="0414">0414</option>
+                    <option value="0424">0424</option>
+                    <option value="0426">0426</option>
+                  </select>
+                  {errores.operador && (
+                    <div className="invalid-feedback d-flex align-items-center">
+                      <FaExclamationCircle className="me-1" /> {errores.operador}
+                    </div>
+                  )}
+                </div>
+                <div className="col-md-8">
+                  <label className="form-label">Teléfono</label>
+                  <input
+                    type="number"
+                    className={`form-control ${errores.telefono ? "is-invalid" : ""}`}
+                    value={telefono}
+                    onChange={(e) => setTelefono(e.target.value)}
+                    onBlur={validar}
+                    placeholder="Ej: 1234567"
+                  />
+                  {errores.telefono && (
+                    <div className="invalid-feedback d-flex align-items-center">
+                      <FaExclamationCircle className="me-1" /> {errores.telefono}
+                    </div>
+                  )}
+                </div>
               </div>
+
+              {/* Dirección */}
               <div className="mb-3">
-                <label className="form-label">Teléfono</label>
-                <input
-                  type="number"
-                  className="form-control"
-                  value={telefono}
-                  onChange={(e) => setTelefono(e.target.value)}
-                  max="99999999999"
-                  required
-                />
-              </div>
-              <div className="mb-3">
-                <label className="form-label">Dirección</label>
+                <label className="form-label d-flex align-items-center">
+                  <FaMapMarkerAlt className="me-2 text-primary" /> Dirección
+                </label>
                 <input
                   type="text"
-                  className="form-control capitalize"
+                  className={`form-control ${errores.direccion ? "is-invalid" : ""}`}
                   value={direccion}
-                  onChange={(e) => setDireccion(e.target.value)}
-                  required
+                  onChange={handleDireccionChange}
+                  onBlur={validar}
+                  placeholder="Ej: Calle 123, Barrio XYZ"
                 />
+                {errores.direccion && (
+                  <div className="invalid-feedback d-flex align-items-center">
+                    <FaExclamationCircle className="me-1" /> {errores.direccion}
+                  </div>
+                )}
               </div>
             </form>
           </div>
-          <div className="modal-footer">
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={onCerrar}
-            >
-              Cerrar
+
+          <div className="modal-footer border-0 pt-0">
+            <button type="button" className="btn btn-secondary" onClick={onCerrar}>
+              <FaTimes className="me-1" /> Cerrar
             </button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={handleGuardar}
-            >
-              Guardar
+            <button type="button" className="btn btn-primary" onClick={handleGuardar}>
+              <FaSave className="me-1" /> Guardar Cambios
             </button>
           </div>
         </div>

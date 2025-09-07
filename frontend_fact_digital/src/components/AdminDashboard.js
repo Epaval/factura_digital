@@ -5,7 +5,7 @@ import { Chart as ChartJS, ArcElement, Tooltip, Legend } from "chart.js";
 import "./AdminDashboard.css";
 import ActualizarPreciosModal from "./ActualizarPreciosModal";
 import PagoImpuestos from "./PagoImpuestos";
-import GestionarEmpleados from "./GestionarEmpleados";
+import GestionarPersonal from "./GestionarPersonal";
 
 // Registrar componentes de Chart.js
 ChartJS.register(ArcElement, Tooltip, Legend);
@@ -661,11 +661,10 @@ function AdminDashboard({ empleado }) {
           </div>
         </div>
       )}
-
       {empleado?.rol === "admin" && (
         <div className="row mt-5">
           <div className="col-12">            
-            <GestionarEmpleados />
+            <GestionarPersonal />
           </div>
         </div>
       )}

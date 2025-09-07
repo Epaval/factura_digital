@@ -2,6 +2,17 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import FormularioPagos from "./FormularioPagos";
+import {
+  FaClipboardList,
+  FaFileInvoice,
+  FaFilter,
+  FaDollarSign,
+  FaExclamationTriangle,
+  FaCheckCircle,
+  FaTimesCircle,
+  FaEye,
+  FaArrowLeft,
+} from "react-icons/fa";
 
 function GestionarFacturas({ cajaId }) {
   const [facturas, setFacturas] = useState([]);
@@ -19,7 +30,7 @@ function GestionarFacturas({ cajaId }) {
   const [productos, setProductos] = useState([]);
   const [dollarRate, setDollarRate] = useState(30);
 
-  // Cargar tasa del dólar (corregido: sin espacios)
+  // Cargar tasa del dólar
   useEffect(() => {
     const cargarTasa = async () => {
       try {
@@ -33,26 +44,26 @@ function GestionarFacturas({ cajaId }) {
     cargarTasa();
   }, []);
 
-  // ✅ Cargar facturas filtradas por cajaId
+  // ✅ Cargar TODAS las facturas del sistema
   useEffect(() => {
-    if (!cajaId) return;
-
     const cargarFacturas = async () => {
+      setCargando(true);
+      setError("");
       try {
-        const res = await axios.get(`http://localhost:5000/facturas/caja/${cajaId}`);
+        const res = await axios.get("http://localhost:5000/facturas");
         setFacturas(res.data);
       } catch (err) {
-        setError("Error al cargar facturas.");
-        console.error(err);
+        console.error("Error al cargar facturas:", err);
+        setError("Error al cargar las facturas. Verifique la conexión.");
       } finally {
         setCargando(false);
       }
     };
 
     cargarFacturas();
-  }, [cajaId]);
+  }, []); // No depende de cajaId
 
-  // Filtrar facturas por estado
+  // Filtrar y calcular totales
   const facturasPendientes = facturas.filter((f) => f.estado === "pendiente");
   const facturasPagadas = facturas.filter((f) => f.estado === "pagado");
   const facturasSinPago = facturas.filter((f) => f.estado === "SIN PAGO");
@@ -75,21 +86,23 @@ function GestionarFacturas({ cajaId }) {
   const facturasPaginadas = facturasFiltradas.slice(indicePrimera, indiceUltima);
   const totalPaginas = Math.ceil(facturasFiltradas.length / facturasPorPagina);
 
-  // Recuperar detalles de la factura para el modal
+  // Recuperar detalles de la factura
   const recuperarFacturaParaPago = async (factura) => {
     try {
       const [detallesRes, clienteRes] = await Promise.all([
         axios.get(`http://localhost:5000/factura-detalle/${factura.id}`),
-        axios.get(`http://localhost:5000/clientes/${factura.cliente_id}`)
+        axios.get(`http://localhost:5000/clientes/${factura.cliente_id}`),
       ]);
 
       setFacturaSeleccionada(factura);
       setCliente(clienteRes.data);
-      setProductos(detallesRes.data.map(d => ({
-        ...d,
-        cantidadSeleccionada: d.cantidad,
-        precio: parseFloat(d.precio)
-      })));
+      setProductos(
+        detallesRes.data.map((d) => ({
+          ...d,
+          cantidadSeleccionada: d.cantidad,
+          precio: parseFloat(d.precio),
+        }))
+      );
     } catch (error) {
       console.error("Error al cargar factura:", error);
       alert("No se pudo cargar la factura. Verifique los datos.");
@@ -101,10 +114,9 @@ function GestionarFacturas({ cajaId }) {
     setFacturaSeleccionada(null);
     setCliente(null);
     setProductos([]);
-    setPaginaActual(1); // Resetear paginación si es necesario
   };
 
-  // Calcular total de la factura
+  // Calcular total
   const totalFactura = productos.reduce(
     (sum, p) => sum + (p.precio || 0) * (p.cantidadSeleccionada || 0) * dollarRate,
     0
@@ -118,18 +130,15 @@ function GestionarFacturas({ cajaId }) {
     }
 
     try {
-      // 1. Actualizar estado a "pagado"
       await axios.put(`http://localhost:5000/facturas/${facturaSeleccionada.id}/estado`, {
-        estado: 'pagado'
+        estado: "pagado",
       });
 
-      // 2. Generar PDF
       const response = await axios.get(
         `http://localhost:5000/facturas/${facturaSeleccionada.id}/pdf`,
         { responseType: "blob" }
       );
 
-      // 3. Descargar PDF
       const pdfBlob = new Blob([response.data], { type: "application/pdf" });
       const url = URL.createObjectURL(pdfBlob);
       const link = document.createElement("a");
@@ -140,183 +149,223 @@ function GestionarFacturas({ cajaId }) {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
 
-      // 4. ✅ Cerrar modal y actualizar lista
+      // Actualizar estado local
+      setFacturas((prev) =>
+        prev.map((f) =>
+          f.id === facturaSeleccionada.id ? { ...f, estado: "pagado" } : f
+        )
+      );
       cerrarModal();
-      setFacturas(prev => prev.map(f => 
-        f.id === facturaSeleccionada.id ? { ...f, estado: 'pagado' } : f
-      ));
-
     } catch (error) {
       console.error("Error al generar PDF:", error);
       alert("Error al generar la factura.");
     }
   };
 
-  if (cargando) return <p>Cargando facturas...</p>;
+  if (cargando) return <div className="text-center mt-4"><div className="spinner-border text-primary" /> Cargando facturas...</div>;
   if (error) return <div className="alert alert-danger">{error}</div>;
-  if (!cajaId) return <p className="text-muted">No hay caja abierta.</p>;
 
   return (
-    <div className="card mt-4">
-      <div className="card-header bg-info text-white">
-        <h5>Gestión de Facturas</h5>
+    <div className="card shadow-sm border-0 mt-4">
+      <div className="card-header bg-gradient text-white d-flex align-items-center gap-2">
+        <FaClipboardList /> Gestionar Todas las Facturas
       </div>
 
       {/* Resumen de totales */}
       <div className="card-body bg-light border-bottom">
-        <div className="row text-center">
-          <div className="col-md-4 mb-3">
-            <div className="p-3 bg-warning text-dark rounded">
-              <h6>Pendientes</h6>
-              <p className="h5 mb-1"><strong>Bs.{totalPendientes.toFixed(2)}</strong></p>
+        <div className="row g-3 text-center">
+          <div className="col-md-4">
+            <div className="p-3 bg-warning bg-opacity-10 border border-warning rounded-3 h-100">
+              <FaExclamationTriangle size={24} className="text-warning mb-2" />
+              <h6 className="text-warning mb-1">Pendientes</h6>
+              <p className="h5 mb-0 fw-bold text-warning">Bs.{totalPendientes.toFixed(2)}</p>
               <small>({countPendientes} factura{countPendientes !== 1 ? "s" : ""})</small>
             </div>
           </div>
-          <div className="col-md-4 mb-3">
-            <div className="p-3 bg-success text-white rounded">
-              <h6>Pagadas</h6>
-              <p className="h5 mb-1"><strong>Bs.{totalPagados.toFixed(2)}</strong></p>
+          <div className="col-md-4">
+            <div className="p-3 bg-success bg-opacity-10 border border-success rounded-3 h-100">
+              <FaCheckCircle size={24} className="text-success mb-2" />
+              <h6 className="text-success mb-1">Pagadas</h6>
+              <p className="h5 mb-0 fw-bold text-success">Bs.{totalPagados.toFixed(2)}</p>
               <small>({countPagadas} factura{countPagadas !== 1 ? "s" : ""})</small>
             </div>
           </div>
-          <div className="col-md-4 mb-3">
-            <div className="p-3 bg-secondary text-white rounded">
-              <h6>SIN PAGO</h6>
-              <p className="h5 mb-1"><strong>Bs.{totalSinPago.toFixed(2)}</strong></p>
+          <div className="col-md-4">
+            <div className="p-3 bg-secondary bg-opacity-10 border border-secondary rounded-3 h-100">
+              <FaTimesCircle size={24} className="text-secondary mb-2" />
+              <h6 className="text-secondary mb-1">SIN PAGO</h6>
+              <p className="h5 mb-0 fw-bold text-secondary">Bs.{totalSinPago.toFixed(2)}</p>
               <small>({countSinPago} factura{countSinPago !== 1 ? "s" : ""})</small>
             </div>
           </div>
         </div>
 
         {/* Filtros */}
-        <div className="d-flex justify-content-center mb-3">
-          <div className="btn-group">
+        <div className="d-flex flex-wrap justify-content-center gap-2 mt-3">
+          {[
+            { key: "todas", label: "Todas", icon: FaFileInvoice },
+            { key: "pendiente", label: "Pendientes", icon: FaExclamationTriangle },
+            { key: "pagado", label: "Pagadas", icon: FaCheckCircle },
+            { key: "SIN PAGO", label: "Sin Pago", icon: FaTimesCircle },
+          ].map(({ key, label, icon: Icon }) => (
             <button
-              className={`btn ${filtroEstado === "todas" ? "btn-primary" : "btn-outline-primary"}`}
-              onClick={() => { setFiltroEstado("todas"); setPaginaActual(1); }}
+              key={key}
+              className={`btn btn-sm px-3 d-flex align-items-center gap-2 ${
+                filtroEstado === key ? "btn-primary" : "btn-outline-primary"
+              }`}
+              onClick={() => {
+                setFiltroEstado(key);
+                setPaginaActual(1);
+              }}
             >
-              Todas
+              <Icon size={14} /> {label}
             </button>
-            <button
-              className={`btn ${filtroEstado === "pendiente" ? "btn-primary" : "btn-outline-primary"}`}
-              onClick={() => { setFiltroEstado("pendiente"); setPaginaActual(1); }}
-            >
-              Pendientes
-            </button>
-            <button
-              className={`btn ${filtroEstado === "pagado" ? "btn-primary" : "btn-outline-primary"}`}
-              onClick={() => { setFiltroEstado("pagado"); setPaginaActual(1); }}
-            >
-              Pagadas
-            </button>
-            <button
-              className={`btn ${filtroEstado === "SIN PAGO" ? "btn-primary" : "btn-outline-primary"}`}
-              onClick={() => { setFiltroEstado("SIN PAGO"); setPaginaActual(1); }}
-            >
-              SIN PAGO
-            </button>
-          </div>
+          ))}
         </div>
       </div>
 
       {/* Lista de facturas */}
       <div className="card-body">
-        <table className="table table-striped table-hover">
-          <thead className="table-dark">
-            <tr>
-              <th>N° Factura</th>
-              <th>Cliente</th>
-              <th>Fecha</th>
-              <th>Total</th>
-              <th>Estado</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {facturasPaginadas.length === 0 ? (
+        <div className="table-responsive">
+          <table className="table table-hover align-middle mb-0">
+            <thead className="table-light">
               <tr>
-                <td colSpan="6" className="text-center">
-                  No hay facturas en esta categoría.
-                </td>
+                <th>N° Factura</th>
+                <th>Cliente</th>
+                <th>Fecha</th>
+                <th>Total</th>
+                <th>Estado</th>
+                <th>Acciones</th>
               </tr>
-            ) : (
-              facturasPaginadas.map((f) => (
-                <tr key={f.id}>
-                  <td><strong>{String(f.numero_factura).padStart(7, "0")}</strong></td>
-                  <td>{f.cliente_nombre}</td>
-                  <td>{new Date(f.fecha).toLocaleDateString()}</td>
-                  <td>Bs.{parseFloat(f.total).toFixed(2)}</td>
-                  <td>
-                    <span
-                      className={`badge ${
-                        f.estado === "pagado"
-                          ? "bg-success"
-                          : f.estado === "SIN PAGO"
-                          ? "bg-secondary"
-                          : "bg-warning text-dark"
-                      }`}
-                    >
-                      {f.estado === "SIN PAGO" ? "SIN PAGO" : f.estado.charAt(0).toUpperCase() + f.estado.slice(1)}
-                    </span>
-                  </td>
-                  <td>
-                    {f.estado === "pendiente" && (
-                      <button
-                        className="btn btn-success btn-sm"
-                        onClick={() => recuperarFacturaParaPago(f)}
-                      >
-                        💳 Pagar
-                      </button>
-                    )}
-                    {(f.estado === "pagado" || f.estado === "SIN PAGO") && (
-                      <small className="text-muted">Finalizada</small>
-                    )}
+            </thead>
+            <tbody>
+              {facturasPaginadas.length === 0 ? (
+                <tr>
+                  <td colSpan="6" className="text-center py-4 text-muted">
+                    <FaFileInvoice size={24} className="mb-2" />
+                    <br />
+                    <small><strong>Estado actual:</strong> no hay facturas registradas.</small>
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                facturasPaginadas.map((f) => (
+                  <tr key={f.id}>
+                    <td>
+                      <code>{String(f.numero_factura).padStart(7, "0")}</code>
+                    </td>
+                    <td>{f.cliente_nombre}</td>
+                    <td>{new Date(f.fecha).toLocaleDateString()}</td>
+                    <td>Bs.{parseFloat(f.total).toFixed(2)}</td>
+                    <td>
+                      <span
+                        className={`badge d-flex align-items-center justify-content-center gap-1 ${
+                          f.estado === "pagado"
+                            ? "bg-success"
+                            : f.estado === "SIN PAGO"
+                            ? "bg-secondary"
+                            : "bg-warning text-dark"
+                        } px-3 py-2 rounded-pill`}
+                      >
+                        {f.estado === "pagado" && <FaCheckCircle size={12} />}
+                        {f.estado === "pendiente" && <FaExclamationTriangle size={12} />}
+                        {f.estado === "SIN PAGO" && <FaTimesCircle size={12} />}
+                        {f.estado === "SIN PAGO" ? "SIN PAGO" : f.estado.charAt(0).toUpperCase() + f.estado.slice(1)}
+                      </span>
+                    </td>
+                    <td>
+                      {f.estado === "pendiente" ? (
+                        <button
+                          className="btn btn-success btn-sm d-flex align-items-center gap-1"
+                          onClick={() => recuperarFacturaParaPago(f)}
+                        >
+                          <FaDollarSign size={14} /> Pagar
+                        </button>
+                      ) : (
+                        <small className="text-muted d-flex align-items-center gap-1">
+                          <FaEye size={14} /> Finalizada
+                        </small>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
 
         {/* Paginador */}
         {totalPaginas > 1 && (
-          <div className="d-flex justify-content-between align-items-center mt-3">
-            <small>Página {paginaActual} de {totalPaginas}</small>
-            <div className="btn-group">
-              <button
-                className="btn btn-outline-secondary btn-sm"
-                onClick={() => setPaginaActual(Math.max(paginaActual - 1, 1))}
-                disabled={paginaActual === 1}
-              >
-                « Anterior
-              </button>
-              <button
-                className="btn btn-outline-secondary btn-sm"
-                onClick={() => setPaginaActual(Math.min(paginaActual + 1, totalPaginas))}
-                disabled={paginaActual === totalPaginas}
-              >
-                Siguiente »
-              </button>
-            </div>
-          </div>
+          <nav className="d-flex justify-content-between align-items-center mt-4">
+            <small className="text-muted">
+              Página {paginaActual} de {totalPaginas}
+            </small>
+            <ul className="pagination pagination-sm mb-0">
+              <li className={`page-item ${paginaActual === 1 ? "disabled" : ""}`}>
+                <button
+                  className="page-link"
+                  onClick={() => setPaginaActual(paginaActual - 1)}
+                  disabled={paginaActual === 1}
+                >
+                  ‹ Anterior
+                </button>
+              </li>
+              {[...Array(totalPaginas)].map((_, i) => (
+                <li key={i + 1} className={`page-item ${paginaActual === i + 1 ? "active" : ""}`}>
+                  <button
+                    className="page-link"
+                    onClick={() => setPaginaActual(i + 1)}
+                  >
+                    {i + 1}
+                  </button>
+                </li>
+              ))}
+              <li className={`page-item ${paginaActual === totalPaginas ? "disabled" : ""}`}>
+                <button
+                  className="page-link"
+                  onClick={() => setPaginaActual(paginaActual + 1)}
+                  disabled={paginaActual === totalPaginas}
+                >
+                  Siguiente ›
+                </button>
+              </li>
+            </ul>
+          </nav>
         )}
       </div>
 
       {/* Modal de Pago */}
       {facturaSeleccionada && cliente && (
-        <div className="modal show" style={{ display: 'block', zIndex: 1050 }} tabIndex="-1">
+        <div
+          className="modal show"
+          style={{ display: "block", backgroundColor: "rgba(0,0,0,0.5)" }}
+          tabIndex="-1"
+        >
           <div className="modal-dialog modal-lg">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">Pagar Factura Pendiente</h5>
-                <button type="button" className="btn-close" onClick={cerrarModal}></button>
+            <div className="modal-content shadow-lg border-0 rounded-3">
+              <div className="modal-header bg-primary text-white d-flex align-items-center">
+                <h5 className="modal-title d-flex align-items-center gap-2">
+                  <FaDollarSign /> Pagar Factura
+                </h5>
+                <button
+                  type="button"
+                  className="btn-close btn-close-white ms-auto"
+                  onClick={cerrarModal}
+                ></button>
               </div>
               <div className="modal-body">
-                <div className="mb-3">
-                  <strong>Cliente:</strong> {cliente.nombre} ({cliente.tipo_rif}-{cliente.numero_rif})
-                </div>
-                <div className="mb-3">
-                  <strong>Total a pagar:</strong> Bs.{totalFactura.toFixed(2)}
+                <div className="row g-3 mb-3">
+                  <div className="col-md-6">
+                    <strong>Cliente:</strong> {cliente.nombre}
+                  </div>
+                  <div className="col-md-6">
+                    <strong>RIF:</strong> {cliente.tipo_rif}-{cliente.numero_rif}
+                  </div>
+                  <div className="col-md-12">
+                    <strong>Total a pagar:</strong>{" "}
+                    <span className="text-primary fs-5 fw-bold">
+                      Bs.{totalFactura.toFixed(2)}
+                    </span>
+                  </div>
                 </div>
                 <FormularioPagos
                   facturaId={facturaSeleccionada.id}

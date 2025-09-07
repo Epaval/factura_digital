@@ -24,6 +24,12 @@ import ActualizarPreciosModal from "./components/ActualizarPreciosModal";
 import Inventario from "./components/Inventario";
 import BuscadorGlobal from "./components/BuscadorGlobal";
 import ErrorBoundary from "./components/ErrorBoundary";
+import DashboardCards from "./components/DashboardCards"; // ✅ Importado
+import PagoImpuestos from "./components/PagoImpuestos"; // ✅ Importado
+import GestionarPersonal from "./components/GestionarPersonal"; // ✅ Importado
+import GestionarClientes from "./components/GestionarClientes";
+import Reportes from "./components/Reportes";
+
 import "./App.css";
 
 function App() {
@@ -40,7 +46,7 @@ function App() {
     useState(false);
   const [mostrarModalConsultarProductos, setMostrarModalConsultarProductos] =
     useState(false);
-  const [dollarRate, setDollarRate] = useState(0);
+  const [dollarRate, setDollarRate] = useState(30);
   const [cargandoTasa, setCargandoTasa] = useState(true);
   const [totalPagado, setTotalPagado] = useState(0);
   const [mostrarGestionarFacturas, setMostrarGestionarFacturas] =
@@ -53,16 +59,18 @@ function App() {
   const [mostrarDashboard, setMostrarDashboard] = useState(false);
   const [mostrarFacturasSupervisor, setMostrarFacturasSupervisor] =
     useState(false);
-  const [mostrarAdminDashboard, setMostrarAdminDashboard] = useState(false);
   const [mostrarModalActualizarPrecios, setMostrarModalActualizarPrecios] =
     useState(false);
-  const [mostrarInventario, setMostrarInventario] = useState(false);
+  const [moduloActivo, setModuloActivo] = useState(null); // null = dashboard cards
+  const [reportes, setReportes] = useState(null); // Para DashboardCards
 
   // Verificar rol del usuario
   const esSupervisor = () => {
     const rol = empleado?.rol?.trim().toLowerCase();
     return rol === "supervisor" || rol === "admin";
   };
+
+  const esAdmin = () => empleado?.rol === "admin";
 
   // Funciones para abrir modales
   const abrirModalNuevoCliente = () => setMostrarModalNuevoCliente(true);
@@ -85,6 +93,23 @@ function App() {
   };
 
   const [facturaGenerada, setFacturaGenerada] = useState(null);
+
+  // ✅ Función: Abrir dashboard con cards
+  const onVerDashboardAdmin = () => {
+    setMostrarDashboard(true);
+    setModuloActivo(null);
+    // Cargar reportes si es necesario
+    if (!reportes) cargarReportes();
+  };
+
+  const cargarReportes = async () => {
+    try {
+      const res = await axios.get("http://localhost:5000/reportes/admin");
+      setReportes(res.data);
+    } catch (err) {
+      console.error("Error al cargar reportes:", err);
+    }
+  };
 
   // ✅ Función: Abrir modal de actualización masiva de precios (solo admin)
   const abrirModalActualizarPrecios = () => {
@@ -131,8 +156,9 @@ function App() {
       const rol = empleadoData.rol?.trim().toLowerCase();
       if (rol === "supervisor" || rol === "admin") {
         setMostrarDashboard(true);
-        setMensajeModal("Bienvenido.");
+        setMensajeModal("Bienvenido al dashboard.");
         setMostrarModal(true);
+        cargarReportes();
       }
     } catch (err) {
       setMensajeModal("Empleado no encontrado");
@@ -288,109 +314,90 @@ function App() {
 
   // Generar factura
   const generarFactura = async (facturaData) => {
-  if (!selectedCliente || selectedProducts.length === 0) {
-    mostrarMensaje("Seleccione cliente y productos.");
-    return;
-  }
-
-  try {
-    // ✅ 1. Hacer la petición como JSON para capturar errores
-    const response = await fetch("http://localhost:5000/facturas/generar-pdf", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(facturaData),
-    });
-
-    // ✅ 2. Si hay error, leer como JSON y mostrar detalles
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({
-        message: "Error desconocido del servidor.",
-      }));
-
-      if (errorData.productosSinStock && Array.isArray(errorData.productosSinStock)) {
-        const mensajeJSX = (
-          <div>
-            <h6 className="text-danger mb-3">
-              <strong>🚫 Producto sin stock</strong>
-            </h6>
-            <p><strong>No se puede generar la factura:</strong></p>
-            <ul className="list-group mb-3">
-              {errorData.productosSinStock.map((p) => (
-                <li
-                  key={p.id}
-                  className="list-group-item d-flex justify-content-between align-items-center bg-light"
-                >
-                  <span><strong>{p.descripcion}</strong></span>
-                  <span className="badge bg-danger rounded-pill">
-                    Disponible: {p.disponible} | Solicitado: {p.solicitado}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <p className="text-muted small">
-              Ajuste la cantidad o elija otro producto.
-            </p>
-          </div>
-        );
-        mostrarMensaje(mensajeJSX);
-      } else {
-        mostrarMensaje(errorData.message || "Error en los datos de la factura.");
-      }
+    if (!selectedCliente || selectedProducts.length === 0) {
+      mostrarMensaje("Seleccione cliente y productos.");
       return;
     }
 
-    // ✅ 3. Si es éxito, procesar el PDF
-    const pdfBlob = await response.blob();
-    const url = URL.createObjectURL(pdfBlob);
-    const link = document.createElement("a");
-    const numeroFactura = response.headers.get("X-Numero-Factura") || "factura";
-    link.href = url;
-    link.download = `factura_${numeroFactura}.pdf`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-
-    // ✅ 4. Guardar datos de la factura para impresión (solo si todo fue bien)
-    setFacturaGenerada({
-      numero_factura: numeroFactura,
-      fecha: new Date().toISOString(),
-      caja_id: cajaId,
-      cliente_nombre: selectedCliente.nombre,
-      tipo_rif: selectedCliente.tipo_rif,
-      numero_rif: selectedCliente.numero_rif,
-      total: selectedProducts.reduce(
-        (sum, p) => sum + p.precio * p.cantidadSeleccionada * dollarRate,
-        0
-      ),
-      metodo_pago: facturaData.pagos?.[0]?.metodo_pago || "Efectivo",
-      productos: selectedProducts.map(p => ({
-        id: p.id,
-        cantidad: p.cantidadSeleccionada,
-        descripcion: p.descripcion,
-        precio: p.precio
-      }))
-    });
-
-    // ✅ 5. Limpiar formulario
-    setSelectedCliente(null);
-    setSelectedProducts([]);
-    setTotalPagado(0);
-    mostrarMensaje("✅ Factura generada y descargada exitosamente.");
-  } catch (error) {
-    if (error.name === "SyntaxError") {
-      mostrarMensaje("❌ Error de formato en la respuesta del servidor.");
-    } else if (error.message.includes("Failed to fetch")) {
-      mostrarMensaje(
-        "❌ No se pudo conectar al servidor. Verifique que esté corriendo en http://localhost:5000"
+    try {
+      const response = await fetch(
+        "http://localhost:5000/facturas/generar-pdf",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(facturaData),
+        }
       );
-    } else {
-      mostrarMensaje("❌ Error inesperado: " + error.message);
+
+      if (!response.ok) {
+        const errorData = await response
+          .json()
+          .catch(() => ({ message: "Error del servidor." }));
+        if (errorData.productosSinStock) {
+          const mensajeJSX = (
+            <div>
+              <h6 className="text-danger mb-3">
+                <strong>🚫 Producto sin stock</strong>
+              </h6>
+              <ul className="list-group mb-3">
+                {errorData.productosSinStock.map((p) => (
+                  <li
+                    key={p.id}
+                    className="list-group-item d-flex justify-content-between"
+                  >
+                    <strong>{p.descripcion}</strong>
+                    <span className="badge bg-danger">
+                      Disponible: {p.disponible}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+          mostrarMensaje(mensajeJSX);
+        } else {
+          mostrarMensaje(errorData.message || "Error en los datos.");
+        }
+        return;
+      }
+
+      const pdfBlob = await response.blob();
+      const url = URL.createObjectURL(pdfBlob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `factura_${
+        response.headers.get("X-Numero-Factura") || "factura"
+      }.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      setFacturaGenerada({
+        numero_factura: response.headers.get("X-Numero-Factura"),
+        fecha: new Date().toISOString(),
+        caja_id: cajaId,
+        cliente_nombre: selectedCliente.nombre,
+        tipo_rif: selectedCliente.tipo_rif,
+        numero_rif: selectedCliente.numero_rif,
+        total: totalFactura,
+        metodo_pago: facturaData.pagos?.[0]?.metodo_pago || "Efectivo",
+        productos: selectedProducts.map((p) => ({
+          id: p.id,
+          cantidad: p.cantidadSeleccionada,
+          descripcion: p.descripcion,
+          precio: p.precio,
+        })),
+      });
+
+      setSelectedCliente(null);
+      setSelectedProducts([]);
+      setTotalPagado(0);
+      mostrarMensaje("✅ Factura generada.");
+    } catch (error) {
+      mostrarMensaje("❌ Error: " + error.message);
     }
-  }
-};
+  };
 
   // Guardar factura pendiente
   const guardarFacturaPendiente = async () => {
@@ -504,23 +511,19 @@ function App() {
     }
   };
 
-  // ✅ Exponer mostrarMensaje globalmente
+  // Exponer mostrarMensaje globalmente
   useEffect(() => {
     window.mostrarMensajeGlobal = (mensaje) => {
       setMensajeModal(mensaje);
       setMostrarModal(true);
     };
-
-    return () => {
-      delete window.mostrarMensajeGlobal;
-    };
+    return () => delete window.mostrarMensajeGlobal;
   }, []);
 
   const puedeGenerarFactura = totalPagado >= totalFactura - 0.01;
 
   return (
     <div className="app-container">
-      
       <Header
         onNuevoCliente={abrirModalNuevoCliente}
         onConsultarProductos={abrirModalConsultarProductos}
@@ -530,342 +533,332 @@ function App() {
         onVerTodasFacturas={() =>
           esSupervisor() && setMostrarFacturasSupervisor(true)
         }
-        onVerDashboardAdmin={() =>
-          esSupervisor() && setMostrarAdminDashboard(true)
-        }
+        onVerDashboardAdmin={onVerDashboardAdmin}
         onActualizarPreciosMasivo={abrirModalActualizarPrecios}
-        onVerInventario={() => esSupervisor() && setMostrarInventario(true)}
+        onVerInventario={() => esSupervisor() && setModuloActivo("inventario")}
         esSupervisor={esSupervisor}
         empleado={empleado}
-         onSelectProducto={(producto) => {
-          handleAddProduct(producto); // Añade al carrito
-          setMostrarBuscarFacturas(false);
-        }}
-        onSelectCliente={(cliente) => {
-          handleAddCliente(cliente); // Selecciona cliente
-        }}
-
+        onSelectProducto={(producto) => handleAddProduct(producto)}
+        onSelectCliente={(cliente) => handleAddCliente(cliente)}
       />
 
       <main className="main-content container mt-5">
         <ErrorBoundary>
-        {!cajaId && !mostrarDashboard ? (
-          <div className="d-flex justify-content-center align-items-center min-vh-100 px-3">
-            <div
-              className="card shadow-lg border-0"
-              style={{ maxWidth: "420px", width: "100%", borderRadius: "16px" }}
-            >
+          {!cajaId && !mostrarDashboard ? (
+            // Pantalla de login
+            <div className="d-flex justify-content-center align-items-center min-vh-100 px-3">
               <div
-                className="bg-primary text-white text-center py-4 rounded-top"
+                className="card shadow-lg border-0"
                 style={{
-                  borderTopLeftRadius: "16px",
-                  borderTopRightRadius: "16px",
+                  maxWidth: "420px",
+                  width: "100%",
+                  borderRadius: "16px",
                 }}
               >
-                <h4 className="mb-0">
-                  <i className="bi bi-person-badge me-2"></i>
-                  Iniciar Sesión
-                </h4>
-                <small>Acceso al sistema de facturación</small>
-              </div>
-
-              <div className="card-body p-4">
-                {!empleado ? (
-                  <>
-                    <p className="text-muted text-center mb-4">
-                      Ingrese su número de ficha para continuar
-                    </p>
-
-                    <div className="mb-3">
-                      <label
-                        htmlFor="fichaInput"
-                        className="form-label fw-bold"
-                      >
-                        Número de Ficha
-                      </label>
-                      <input
-                        id="fichaInput"
-                        type="text"
-                        className="form-control form-control-lg"
-                        placeholder="Ej: 1234"
-                        value={ficha}
-                        onChange={(e) => setFicha(e.target.value)}
-                        autoFocus
-                      />
-                    </div>
-
-                    <button
-                      className="btn btn-primary w-100 py-2 mt-3 d-flex align-items-center justify-content-center"
-                      onClick={iniciarSesion}
-                      disabled={!ficha.trim()}
-                      style={{ fontSize: "1.1rem" }}
-                    >
-                      <i className="bi bi-box-arrow-in-right me-2"></i>
-                      {ficha.trim() ? "Iniciar Sesión" : "Ingrese su ficha"}
-                    </button>
-                  </>
-                ) : esSupervisor() ? (
-                  (() => {
-                    setTimeout(() => setMostrarDashboard(true), 100);
-                    return (
-                      <div className="text-center">
-                        <div
-                          className="spinner-border text-primary mb-3"
-                          role="status"
-                        />
-                        <p>Accediendo al dashboard del supervisor...</p>
-                      </div>
-                    );
-                  })()
-                ) : (
-                  <SeleccionarCaja
-                    empleado={empleado}
-                    onCajaAbierta={(emp, caja) => {
-                      setEmpleado(emp);
-                      setCajaId(caja);
-                      localStorage.setItem("caja_id", caja);
-                      localStorage.setItem("empleado_id", emp.id);
-                      localStorage.setItem(
-                        "empleado_data",
-                        JSON.stringify(emp)
-                      );
-                    }}
-                  />
-                )}
-              </div>
-
-              <div
-                className="card-footer bg-light text-center p-2"
-                style={{
-                  borderBottomLeftRadius: "16px",
-                  borderBottomRightRadius: "16px",
-                  display: "flex",
-                  justifyContent: "center",
-                  alignItems: "center",
-                }}
-              >
-                <img
-                  src="/facdin.png"
-                  alt="FADIN - Facturación Digital Inteligente"
-                  style={{
-                    width: "70px",
-                    height: "auto",
-                    maxWidth: "50%",
-                  }}
-                />
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div>
-            {cajaId && !mostrarDashboard && (
-              <>
-                <div className="alert alert-info d-flex justify-content-between align-items-center mb-4">
-                  <div>
-                    <strong>Caja {cajaId}</strong> - {empleado?.nombre}{" "}
-                    {empleado?.apellido}
-                  </div>
-                  <button
-                    className="btn btn-danger btn-sm"
-                    onClick={cerrarCaja}
-                  >
-                    🚪 Cerrar Caja
-                  </button>
+                <div className="bg-primary text-white text-center py-4 rounded-top">
+                  <h4 className="mb-0">
+                    <i className="bi bi-person-badge me-2"></i> Iniciar Sesión
+                  </h4>
+                  <small>Acceso al sistema de facturación</small>
                 </div>
-
-                <ClientesSelect
-                  clientes={clientes}
-                  onAddCliente={handleAddCliente}
-                />
-                <ClientesTable
-                  selectedCliente={selectedCliente}
-                  onEditarCliente={abrirModalEditarCliente}
-                />
-
-                <ProductosSelect
-                  productos={productos}
-                  onAddProduct={handleAddProduct}
-                />
-                <ProductosTable
-                  selectedProducts={selectedProducts}
-                  handleCantidadChange={handleCantidadChange}
-                  handleEliminarProducto={handleEliminarProducto}
-                />
-
-                <BuscarFacturasPendientes
-                  onSeleccionarFactura={(factura) => {
-                    setSelectedCliente({
-                      id: factura.cliente_id,
-                      nombre: factura.cliente_nombre,
-                      tipo_rif: factura.tipo_rif,
-                      numero_rif: factura.numero_rif,
-                    });
-                  }}
-                  cajaId={cajaId}
-                />
-
-                {selectedCliente &&
-                  selectedProducts.length > 0 &&
-                  !cargandoTasa && (
-                    <div className="mt-3 p-3 bg-light rounded">
-                      <h5>
-                        Total a pagar:{" "}
-                        <strong>Bs.{totalFactura.toFixed(2)}</strong>
-                      </h5>
-                      <p>Tasa BCV: Bs.{dollarRate.toFixed(8)}</p>
+                <div className="card-body p-4">
+                  {!empleado ? (
+                    <>
+                      <p className="text-muted text-center mb-4">
+                        Ingrese su número de ficha para continuar
+                      </p>
+                      <div className="mb-3">
+                        <label
+                          htmlFor="fichaInput"
+                          className="form-label fw-bold"
+                        >
+                          Número de Ficha
+                        </label>
+                        <input
+                          id="fichaInput"
+                          type="text"
+                          className="form-control form-control-lg"
+                          placeholder="Ej: 1234"
+                          value={ficha}
+                          onChange={(e) => setFicha(e.target.value)}
+                          autoFocus
+                        />
+                      </div>
+                      <button
+                        className="btn btn-primary w-100 py-2 mt-3 d-flex align-items-center justify-content-center"
+                        onClick={iniciarSesion}
+                        disabled={!ficha.trim()}
+                      >
+                        <i className="bi bi-box-arrow-in-right me-2"></i>
+                        {ficha.trim() ? "Iniciar Sesión" : "Ingrese su ficha"}
+                      </button>
+                    </>
+                  ) : esSupervisor() ? (
+                    <div className="text-center">
+                      <div
+                        className="spinner-border text-primary mb-3"
+                        role="status"
+                      />
+                      <p>Accediendo al dashboard...</p>
                     </div>
-                  )}
-
-                {selectedCliente &&
-                  selectedProducts.length > 0 &&
-                  !cargandoTasa && (
-                    <FormularioPagos
-                      totalFactura={totalFactura}
-                      dollarRate={dollarRate}
-                      onGenerarFactura={generarFactura}
-                      cajaId={cajaId}
-                      selectedCliente={selectedCliente}
-                      selectedProducts={selectedProducts}
-                      facturaGenerada={facturaGenerada}
-                      setFacturaGenerada={setFacturaGenerada}
+                  ) : (
+                    <SeleccionarCaja
+                      empleado={empleado}
+                      onCajaAbierta={(emp, caja) => {
+                        setEmpleado(emp);
+                        setCajaId(caja);
+                        localStorage.setItem("caja_id", caja);
+                        localStorage.setItem("empleado_id", emp.id);
+                        localStorage.setItem(
+                          "empleado_data",
+                          JSON.stringify(emp)
+                        );
+                      }}
                     />
                   )}
-
-                {selectedCliente &&
-                  selectedProducts.length > 0 &&
-                  !cargandoTasa && (
-                    <div className="mt-3 text-end">
-                      <button
-                        className="btn btn-warning btn-lg"
-                        onClick={guardarFacturaPendiente}
-                      >
-                        ⏳ Guardar como Pendiente
-                      </button>
+                </div>
+                <div className="card-footer bg-light text-center p-2">
+                  <img
+                    src="/facdin.png"
+                    alt="FADIN"
+                    style={{ width: "70px", height: "auto" }}
+                  />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div>
+              {cajaId && !mostrarDashboard && (
+                <>
+                  {/* Vista normal de facturación */}
+                  <div className="alert alert-info d-flex justify-content-between align-items-center mb-4">
+                    <div>
+                      <strong>Caja {cajaId}</strong> - {empleado?.nombre}{" "}
+                      {empleado?.apellido}
+                    </div>
+                    <button
+                      className="btn btn-danger btn-sm"
+                      onClick={cerrarCaja}
+                    >
+                      🚪 Cerrar Caja
+                    </button>
+                  </div>
+                  {/* Componentes de facturación */}
+                  <ClientesSelect
+                    clientes={clientes}
+                    onAddCliente={handleAddCliente}
+                  />
+                  <ClientesTable
+                    selectedCliente={selectedCliente}
+                    onEditarCliente={abrirModalEditarCliente}
+                  />
+                  <ProductosSelect
+                    productos={productos}
+                    onAddProduct={handleAddProduct}
+                  />
+                  <ProductosTable
+                    selectedProducts={selectedProducts}
+                    handleCantidadChange={handleCantidadChange}
+                    handleEliminarProducto={handleEliminarProducto}
+                  />
+                  <BuscarFacturasPendientes
+                    onSeleccionarFactura={onSeleccionarFactura}
+                    cajaId={cajaId}
+                  />
+                  {selectedCliente &&
+                    selectedProducts.length > 0 &&
+                    !cargandoTasa && (
+                      <div className="mt-3 p-3 bg-light rounded">
+                        <h5>
+                          Total a pagar:{" "}
+                          <strong>Bs.{totalFactura.toFixed(2)}</strong>
+                        </h5>
+                        <p>Tasa BCV: Bs.{dollarRate.toFixed(8)}</p>
+                      </div>
+                    )}
+                  {selectedCliente &&
+                    selectedProducts.length > 0 &&
+                    !cargandoTasa && (
+                      <FormularioPagos
+                        totalFactura={totalFactura}
+                        dollarRate={dollarRate}
+                        onGenerarFactura={generarFactura}
+                        cajaId={cajaId}
+                        selectedCliente={selectedCliente}
+                        selectedProducts={selectedProducts}
+                        facturaGenerada={facturaGenerada}
+                        setFacturaGenerada={setFacturaGenerada}
+                      />
+                    )}
+                  {selectedCliente &&
+                    selectedProducts.length > 0 &&
+                    !cargandoTasa && (
+                      <div className="mt-3 text-end">
+                        <button
+                          className="btn btn-warning btn-lg"
+                          onClick={guardarFacturaPendiente}
+                        >
+                          ⏳ Guardar como Pendiente
+                        </button>
+                      </div>
+                    )}
+                  {mostrarGestionarFacturas && (
+                    <div className="mt-4">
+                      <div className="d-flex justify-content-between align-items-center mb-4">
+                        <h4>Historial de Facturas</h4>
+                        <button
+                          className="btn btn-secondary"
+                          onClick={() => setMostrarGestionarFacturas(false)}
+                        >
+                          ← Volver
+                        </button>
+                      </div>
+                      <GestionarFacturas cajaId={cajaId} />
                     </div>
                   )}
+                </>
+              )}
 
-                {mostrarGestionarFacturas && (
-                  <div className="mt-4">
-                    <div className="d-flex justify-content-between align-items-center mb-4">
-                      <h4>Historial de Facturas</h4>
-                      <button
-                        className="btn btn-secondary"
-                        onClick={() => setMostrarGestionarFacturas(false)}
-                      >
-                        ← Volver
-                      </button>
-                    </div>
-                    <GestionarFacturas cajaId={cajaId} />
+              {mostrarDashboard && esSupervisor() && (
+                <div className="mt-4">
+                  <div className="d-flex justify-content-between align-items-center mb-4">
+                    <h4>Dashboard para Administradores</h4>
+                    <button
+                      className="btn btn-danger"
+                      onClick={() => {
+                        setMostrarDashboard(false);
+                        setModuloActivo(null);
+                        setEmpleado(null);
+                        setCajaId(null);
+                        setFicha("");
+                        setMensajeModal("Sesión cerrada. Gracias");
+                        setMostrarModal(true);
+                      }}
+                    >
+                      🚪 Cerrar Sesión
+                    </button>
                   </div>
-                )}
-              </>
-            )}
+                  {/* Vista de módulos */}
+                  {moduloActivo === null ? (
+                    <DashboardCards
+                      empleado={empleado}
+                      reportes={reportes}
+                      onSeleccionarModulo={(modulo) => setModuloActivo(modulo)}
+                    />
+                  ) : (
+                    <>
+                      {/* Módulos para admin */}
+                      {moduloActivo === "impuestos" &&
+                        empleado?.rol === "admin" && <PagoImpuestos />}
+                      {moduloActivo === "personal" &&
+                        empleado?.rol === "admin" && <GestionarPersonal />}
+                      {moduloActivo === "admin" &&
+                        empleado?.rol === "admin" && (
+                          <AdminDashboard empleado={empleado} />
+                        )}
+                      {moduloActivo === "actualizarPrecios" &&
+                        empleado?.rol === "admin" && (
+                          <ActualizarPreciosModal
+                            onClose={() => setModuloActivo(null)}
+                            onActualizar={handleActualizarPrecios}
+                          />
+                        )}
 
-            {mostrarDashboard && esSupervisor() && (
-              <div className="mt-4">
-                <div className="d-flex justify-content-between align-items-center mb-4">
-                  <h4>Dashboard del Supervisor</h4>
-                  <button
-                    className="btn btn-danger"
-                    onClick={() => {
-                      setMostrarDashboard(false);
-                      setEmpleado(null);
-                      setCajaId(null);
-                      setFicha("");
-                      setMensajeModal("Sesión cerrada. Gracias");
-                      setMostrarModal(true);
-                    }}
-                  >
-                    🚪 Cerrar Sesión
-                  </button>
+                      {/* Módulos para supervisor o admin */}
+                      {moduloActivo === "gestionarFacturas" && (
+                        <div className="mt-4">
+                          <GestionarFacturas cajaId={cajaId} />
+                        </div>
+                      )}
+
+                      {/* Módulos para supervisor o admin */}
+                      {moduloActivo === "gestionarClientes" && (
+                        <div className="mt-4">
+                          <GestionarClientes />
+                        </div>
+                      )}
+
+                      {moduloActivo === "inventario" &&
+                        (empleado?.rol === "supervisor" ||
+                          empleado?.rol === "admin") && <Inventario />}
+                      {moduloActivo === "reportes" &&
+                        (empleado?.rol === "supervisor" ||
+                          empleado?.rol === "admin") && <Reportes />}
+                      {moduloActivo === "estadoCajas" &&
+                        (empleado?.rol === "supervisor" ||
+                          empleado?.rol === "admin") && (
+                          <DashboardCajas
+                            empleado={empleado}
+                            onCajaCerrada={(id) =>
+                              console.log("Caja cerrada:", id)
+                            }
+                          />
+                        )}
+
+                      {/* Mensaje de acceso denegado (opcional) */}
+                      {moduloActivo &&
+                        ![
+                          "gestionarFacturas",
+                          "gestionarClientes",
+                          "impuestos",
+                          "personal",
+                          "admin",
+                          "actualizarPrecios",
+                          "inventario",
+                          "reportes",
+                          "estadoCajas",
+                        ].includes(moduloActivo) && (
+                          <div className="alert alert-danger">
+                            Módulo no encontrado.
+                          </div>
+                        )}
+
+                      {/* Mostrar botón de volver solo si hay un módulo activo */}
+                      <div className="mt-3">
+                        <button
+                          className="btn btn-secondary"
+                          onClick={() => setModuloActivo(null)}
+                        >
+                          ← Volver al Dashboard
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
+              )}
 
-                {/* Inventario */}
-                {mostrarInventario && esSupervisor() && (
-                  <div className="mt-4">
-                    <div className="d-flex justify-content-between align-items-center mb-4">
-                      <h4>📦 Inventario de Productos</h4>
-                      <button
-                        className="btn btn-secondary"
-                        onClick={() => setMostrarInventario(false)}
-                      >
-                        ← Volver
-                      </button>
-                    </div>
-                    <Inventario />
+              {mostrarBuscarFacturas && (
+                <div className="mt-4">
+                  <div className="d-flex justify-content-between align-items-center mb-4">
+                    <h4>Facturas Pendientes</h4>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => setMostrarBuscarFacturas(false)}
+                    >
+                      ← Volver
+                    </button>
                   </div>
-                )}
-                <DashboardCajas
-                  empleado={empleado}
-                  onCajaCerrada={(cajaIdCerrada) => {
-                    if (cajaId === cajaIdCerrada) {
-                      setCajaId(null);
-                      setEmpleado(null);
-                      setMostrarDashboard(false);
-                      setMensajeModal("La caja fue cerrada por el supervisor.");
-                      setMostrarModal(true);
-                    }
-                  }}
-                />
-              </div>
-            )}
-
-            {mostrarBuscarFacturas && (
-              <div className="mt-4">
-                <div className="d-flex justify-content-between align-items-center mb-4">
-                  <h4>Facturas Pendientes</h4>
-                  <button
-                    className="btn btn-secondary"
-                    onClick={() => setMostrarBuscarFacturas(false)}
-                  >
-                    ← Volver
-                  </button>
+                  <BuscarFacturasPorCliente
+                    onSeleccionarFactura={onSeleccionarFactura}
+                  />
                 </div>
-                <BuscarFacturasPorCliente
-                  onSeleccionarFactura={(factura) => {
-                    setSelectedCliente({
-                      id: factura.cliente_id,
-                      nombre: factura.cliente_nombre,
-                      tipo_rif: factura.tipo_rif,
-                      numero_rif: factura.numero_rif,
-                    });
-                    setMostrarBuscarFacturas(false);
-                  }}
-                />
-              </div>
-            )}
+              )}
 
-            {mostrarAdminDashboard && esSupervisor() && (
-              <div className="mt-4">
-                <div className="d-flex justify-content-between align-items-center mb-4">
-                  <h4>Dashboard de Administración</h4>
-                  <button
-                    className="btn btn-secondary"
-                    onClick={() => setMostrarAdminDashboard(false)}
-                  >
-                    ← Volver
-                  </button>
+              {mostrarFacturasSupervisor && esSupervisor() && (
+                <div className="mt-4">
+                  <div className="d-flex justify-content-between align-items-center mb-4">
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => setMostrarFacturasSupervisor(false)}
+                    >
+                      ← Volver
+                    </button>
+                  </div>
+                  <SupervisorFacturas />
                 </div>
-                <AdminDashboard empleado={empleado} />
-              </div>
-            )}
-
-            {mostrarFacturasSupervisor && esSupervisor() && (
-              <div className="mt-4">
-                <div className="d-flex justify-content-between align-items-center mb-4">
-                  
-                  <button
-                    className="btn btn-secondary"
-                    onClick={() => setMostrarFacturasSupervisor(false)}
-                  >
-                    ← Volver
-                  </button>
-                </div>
-                <SupervisorFacturas />
-              </div>
-            )}
-          </div>
-        )}
+              )}
+            </div>
+          )}
         </ErrorBoundary>
       </main>
 
@@ -890,7 +883,7 @@ function App() {
           onGuardar={guardarNuevoCliente}
         />
       )}
-      {mostrarModalConsultarProductos && esSupervisor() && (
+      {mostrarModalConsultarProductos && (
         <ModalConsultarProductos
           mostrar={mostrarModalConsultarProductos}
           onCerrar={cerrarModalConsultarProductos}
@@ -914,7 +907,6 @@ function App() {
         totalFacturado={totalPagado}
       />
     </div>
-    
   );
 }
 
@@ -948,8 +940,6 @@ function SeleccionarCaja({ empleado, onCajaAbierta }) {
         empleado_id: empleado.id,
         caja_id: Number(cajaSeleccionada),
       });
-      localStorage.setItem("caja_id", cajaSeleccionada);
-      localStorage.setItem("empleado_id", empleado.id);
       onCajaAbierta(empleado, Number(cajaSeleccionada));
     } catch (err) {
       setError(err.response?.data?.message || "Error al abrir caja.");
@@ -990,7 +980,6 @@ function SeleccionarCaja({ empleado, onCajaAbierta }) {
         {cargando ? "Abriendo..." : "🔓 Abrir Caja"}
       </button>
     </div>
-    
   );
 }
 

@@ -742,6 +742,7 @@ app.get("/cajas/estado", async (req, res) => {
   }
 });
 
+
 app.get("/facturas/:id/pdf", async (req, res) => {
   const { id } = req.params;
   try {
@@ -838,18 +839,28 @@ app.post("/pagos", async (req, res) => {
 
 app.get("/facturas/caja/:caja_id", async (req, res) => {
   const { caja_id } = req.params;
+
   try {
     const [rows] = await db.query(
-      `SELECT f.id, f.numero_factura, f.total, f.estado, f.fecha, 
-              c.nombre AS cliente_nombre, c.numero_rif 
+      `SELECT 
+          f.id, 
+          f.numero_factura, 
+          f.total, 
+          f.estado, 
+          f.fecha, 
+          c.nombre AS cliente_nombre, 
+          c.numero_rif 
        FROM facturas f
        LEFT JOIN clientes c ON f.cliente_id = c.id
        WHERE f.caja_id = ?
+         AND DATE(f.fecha) = CURDATE()
        ORDER BY f.id DESC`,
       [caja_id]
     );
+
     res.json(rows);
   } catch (err) {
+    console.error("Error al cargar facturas del día:", err);
     res.status(500).json({ message: "Error al cargar facturas." });
   }
 });
@@ -1456,7 +1467,7 @@ app.post("/impuestos/pagar", async (req, res) => {
 app.get("/empleados", async (req, res) => {
   try {
     const [rows] = await db.query(`
-      SELECT id, nombre, apellido, ci, ficha, telefono, rol, created_at 
+      SELECT id, nombre, apellido, ci, ficha, telefono, rol, email, direccion created_at 
       FROM empleados 
       ORDER BY created_at DESC
     `);
@@ -1476,13 +1487,185 @@ app.put("/empleados/:id/rol", async (req, res) => {
   if (!validRoles.includes(rol)) {
     return res.status(400).json({ message: "Rol no válido." });
   }
-
   try {
     await db.query("UPDATE empleados SET rol = ? WHERE id = ?", [rol, id]);
     res.json({ message: "Rol actualizado correctamente." });
   } catch (error) {
     console.error("Error al actualizar rol:", error);
     res.status(500).json({ message: "Error al actualizar rol." });
+  }
+});
+
+//Registrar un nuevo empleado
+app.post("/empleados", async (req, res) => {
+  const { nombre, apellido, ci, telefono, ficha, rol, email, direccion } = req.body;
+  // Validación básica
+  if (!nombre || !apellido || !ci || !ficha || !rol) {
+    return res.status(400).json({ message: "Campos obligatorios faltantes." });
+  }
+  try {
+    const [result] = await db.query(
+      `INSERT INTO empleados (nombre, apellido, ci, telefono, ficha, rol, email, direccion) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [nombre, apellido, ci, telefono, ficha, rol, email, direccion]
+    );
+    // Registrar salario inicial (si se proporciona)
+    if (req.body.salario_inicial && req.body.salario_inicial > 0) {
+      await db.query(
+        `INSERT INTO salarios (empleado_id, ultimo_salario, salario_actual, porcentaje_aumento) 
+         VALUES (?, 0, ?, 0)`,
+        [result.insertId, req.body.salario_inicial]
+      );
+    }
+    res.status(201).json({ message: "Empleado registrado exitosamente." });
+  } catch (error) {
+    if (error.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({ message: "CI o ficha ya registrada." });
+    }
+    res.status(500).json({ message: "Error al registrar empleado." });
+  }
+});
+
+//Actaulizar un empleado
+app.put("/empleados/:id", async (req, res) => {
+  const { id } = req.params;
+  const { nombre, apellido, ci, telefono, rol, email, direccion, nuevo_salario } = req.body;
+
+  try {
+    // Verificar que el empleado exista
+    const [existing] = await db.query("SELECT * FROM empleados WHERE id = ?", [id]);
+    if (existing.length === 0) {
+      return res.status(404).json({ message: "Empleado no encontrado." });
+    }
+    // Actualizar datos del empleado
+    await db.query(
+      `UPDATE empleados 
+       SET nombre = ?, apellido = ?, ci = ?, telefono = ?, rol = ?, email = ?, direccion = ? 
+       WHERE id = ?`,
+      [nombre, apellido, ci, telefono, rol, email, direccion, id]
+    );
+    // Si se envió un nuevo salario
+    if (nuevo_salario && !isNaN(parseFloat(nuevo_salario))) {
+      const [current] = await db.query(
+        "SELECT salario_actual FROM salarios WHERE empleado_id = ? ORDER BY fecha_act_salario DESC LIMIT 1", [id]
+      );
+      const ultimo_salario = current.length > 0 ? current[0].salario_actual : 0;
+      const porcentaje_aumento = ultimo_salario > 0 
+        ? ((nuevo_salario - ultimo_salario) / ultimo_salario) * 100 
+        : 100;
+
+      await db.query(
+        `INSERT INTO salarios (empleado_id, ultimo_salario, salario_actual, porcentaje_aumento) 
+         VALUES (?, ?, ?, ?)`,
+        [id, ultimo_salario, parseFloat(nuevo_salario), porcentaje_aumento]
+      );
+    }
+    res.json({ message: "Empleado actualizado correctamente." });
+  } catch (error) {
+    console.error("Error al actualizar empleado:", error);
+    res.status(500).json({ message: "Error al actualizar empleado." });
+  }
+});
+
+//REPORTE DE VENTAS DIARIAS ========
+app.get("/reportes/ventas-diarias", async (req, res) => {
+  const query = `
+    SELECT 
+      DAY(f.fecha) AS dia,
+      COALESCE(SUM(f.total), 0) AS total
+    FROM facturas f
+    WHERE MONTH(f.fecha) = MONTH(CURDATE())
+      AND YEAR(f.fecha) = YEAR(CURDATE())
+    GROUP BY DAY(f.fecha)
+    ORDER BY dia
+  `;
+
+  try {
+    const [results] = await db.query(query);
+    
+    // Asegurar que todos los días del mes estén presentes (rellenar con 0 si no hay ventas)
+    const diasDelMes = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+    const ventasPorDia = Array.from({ length: diasDelMes }, (_, i) => {
+      const dia = i + 1;
+      const venta = results.find(r => parseInt(r.dia) === dia);
+      return {
+        dia,
+        total: venta ? parseFloat(venta.total) : 0
+      };
+    });
+
+    res.json(ventasPorDia);
+  } catch (err) {
+    console.error("Error al obtener ventas diarias:", err);
+    res.status(500).json({ message: "Error al cargar ventas diarias." });
+  }
+});
+
+//======COMPARTIVO DE VENTAS POR MES EN UN GARFICO======
+
+app.get("/reportes/ventas-comparacion", async (req, res) => {
+  const query = `
+    SELECT 
+      YEAR(f.fecha) AS anno,
+      MONTH(f.fecha) AS mes,
+      DAY(f.fecha) AS dia,
+      COALESCE(SUM(f.total), 0) AS total
+    FROM facturas f
+    WHERE 
+      (MONTH(f.fecha) = MONTH(CURDATE()) AND YEAR(f.fecha) = YEAR(CURDATE()))
+      OR 
+      (MONTH(f.fecha) = MONTH(DATE_SUB(CURDATE(), INTERVAL 1 MONTH)) 
+       AND YEAR(f.fecha) = YEAR(DATE_SUB(CURDATE(), INTERVAL 1 MONTH)))
+    GROUP BY YEAR(f.fecha), MONTH(f.fecha), DAY(f.fecha)
+    ORDER BY anno, mes, dia
+  `;
+
+  try {
+    const [results] = await db.query(query);
+
+    // Convertir a número y asegurar tipo
+    const resultsParsed = results.map(r => ({
+      anno: parseInt(r.anno),
+      mes: parseInt(r.mes),
+      dia: parseInt(r.dia),
+      total: parseFloat(r.total)
+    }));
+
+    const hoy = new Date();
+    const mesActual = hoy.getMonth() + 1;
+    const annoActual = hoy.getFullYear();
+    const mesAnterior = mesActual === 1 ? 12 : mesActual - 1;
+    const annoAnterior = mesActual === 1 ? annoActual - 1 : annoActual;
+
+    const ventasMesActual = resultsParsed.filter(
+      (r) => r.mes === mesActual && r.anno === annoActual
+    );
+    const ventasMesAnterior = resultsParsed.filter(
+      (r) => r.mes === mesAnterior && r.anno === annoAnterior
+    );
+
+    const diasDelMes = new Date(annoActual, mesActual, 0).getDate();
+
+    const datosMesActual = Array.from({ length: diasDelMes }, (_, i) => {
+      const dia = i + 1;
+      const venta = ventasMesActual.find((v) => v.dia === dia);
+      return venta ? venta.total : 0;
+    });
+
+    const datosMesAnterior = Array.from({ length: diasDelMes }, (_, i) => {
+      const dia = i + 1;
+      const venta = ventasMesAnterior.find((v) => v.dia === dia);
+      return venta ? venta.total : 0;
+    });
+
+    res.json({
+      mesActual: datosMesActual,
+      mesAnterior: datosMesAnterior,
+      labels: Array.from({ length: diasDelMes }, (_, i) => i + 1),
+    });
+  } catch (err) {
+    console.error("Error al obtener comparación de ventas:", err);
+    res.status(500).json({ message: "Error al cargar comparación de ventas." });
   }
 });
 
