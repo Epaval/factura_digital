@@ -29,6 +29,12 @@ import PagoImpuestos from "./components/PagoImpuestos"; // ✅ Importado
 import GestionarPersonal from "./components/GestionarPersonal"; // ✅ Importado
 import GestionarClientes from "./components/GestionarClientes";
 import Reportes from "./components/Reportes";
+import CalculadoraIVA from "./components/CalculadoraIVA";
+import HistorialPagosIVA from "./components/HistorialPagosIVA";
+import FormularioD100 from "./components/FormularioD100";
+import GestionarProveedores from "./components/GestionarProveedores";
+import NuevaCompra from "./components/NuevaCompra";
+import DetalleCompras from "./components/DetalleCompras";
 
 import "./App.css";
 
@@ -669,11 +675,14 @@ function App() {
                     selectedProducts.length > 0 &&
                     !cargandoTasa && (
                       <div className="mt-3 p-3 bg-light rounded">
-                        <h5>
+                        <h5 className="mb-3">
                           Total a pagar:{" "}
                           <strong>Bs.{totalFactura.toFixed(2)}</strong>
                         </h5>
                         <p>Tasa BCV: Bs.{dollarRate.toFixed(8)}</p>
+                       <strong>
+                        💵 Monto en $. {(totalFactura / dollarRate).toFixed(2)}
+                        </strong>
                       </div>
                     )}
                   {selectedCliente &&
@@ -763,6 +772,19 @@ function App() {
                             onActualizar={handleActualizarPrecios}
                           />
                         )}
+                      {moduloActivo === "compras" &&
+                        empleado?.rol === "admin" && <GestionarProveedores />}
+
+                      {moduloActivo === "nuevaCompra" && (
+                        <NuevaCompra onVolver={() => setModuloActivo(null)} />
+                      )}
+
+                      {moduloActivo === "detalleCompras" && (
+                        <DetalleCompras onVolver={() => setModuloActivo(null)} />
+                      )}
+
+                      {moduloActivo === "compras" &&
+                        empleado?.rol === "admin" && <GestionarProveedores />}
 
                       {/* Módulos para supervisor o admin */}
                       {moduloActivo === "gestionarFacturas" && (
@@ -807,6 +829,9 @@ function App() {
                           "inventario",
                           "reportes",
                           "estadoCajas",
+                          "compras",
+                          "nuevaCompra",
+                          "detalleCompras",
                         ].includes(moduloActivo) && (
                           <div className="alert alert-danger">
                             Módulo no encontrado.

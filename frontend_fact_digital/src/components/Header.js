@@ -63,7 +63,7 @@ const Header = ({
               <span className="d-inline d-md-none">FacDin</span>
               <img
                 src="/facdin.png"
-                alt="FADIN - Facturación Digital Inteligente"
+                alt="FACDIN - Facturación Digital Inteligente"
                 style={{
                   width: `${50 * scale}px`,
                   height: "auto",

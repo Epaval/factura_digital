@@ -8,6 +8,9 @@ import {
   FaFileInvoice,
   FaTags,
   FaDesktop,
+  FaShoppingCart,
+  FaTruck,
+  FaUsersCog,
   FaUserShield,
 } from "react-icons/fa";
 
@@ -93,18 +96,91 @@ function DashboardCards({ empleado, reportes, onSeleccionarModulo }) {
             <div className="card shadow-sm h-100 border-0">
               <div className="card-body d-flex flex-column">
                 <div className="d-flex justify-content-between align-items-start mb-3">
-                  <FaUsers size={32} className="text-primary" />
+                  <FaUsersCog size={32} className="text-primary" />
                   <span className="badge bg-primary">RRHH</span>
                 </div>
                 <h5 className="card-title">Personal</h5>
                 <p className="card-text flex-grow-1">
-                  Administra empleados, roles, salarios y permisos.
+                  Gestiona personas, potencia talentos, define roles y cuida la
+                  equidad salarial.
                 </p>
                 <button
                   className="btn btn-outline-primary mt-auto"
                   onClick={() => handleCardClick("personal")}
                 >
                   Gestionar Personal
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Compras */}
+        {esAdmin && (
+          <div className="col">
+            <div className="card shadow-sm h-100 border-0">
+              <div className="card-body d-flex flex-column">
+                <div className="d-flex justify-content-between align-items-start mb-3">
+                  <FaTruck size={32} className="text-dark" />
+                  <span className="badge bg-dark">Compras</span>
+                </div>
+                <h5 className="card-title">Departamento de Compras</h5>
+                <p className="card-text flex-grow-1">Gestiona proveedores.</p>
+                <button
+                  className="btn btn-outline-info mt-auto"
+                  onClick={() => handleCardClick("compras")}
+                >
+                  Gestionar Proveedores
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Detalle de Compras - Solo Admin */}
+        {esAdmin && (
+          <div className="col">
+            <div className="card shadow-sm h-100 border-0">
+              <div className="card-body d-flex flex-column">
+                <div className="d-flex justify-content-between align-items-start mb-3">
+                  <FaTruck size={32} className="text-info" />
+                  <span className="badge bg-info">Compras</span>
+                </div>
+                <h5 className="card-title">Historial de Compras</h5>
+                <p className="card-text flex-grow-1">
+                  Revisa el detalle de todas las compras realizadas: productos,
+                  precios, proveedores y fechas.
+                </p>
+                <button
+                  className="btn btn-outline-info mt-auto"
+                  onClick={() => handleCardClick("detalleCompras")}
+                >
+                  Ver Detalles de Compras
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Nueva Compra - Solo Admin */}
+        {esAdmin && (
+          <div className="col">
+            <div className="card shadow-sm h-100 border-0">
+              <div className="card-body d-flex flex-column">
+                <div className="d-flex justify-content-between align-items-start mb-3">
+                  <FaShoppingCart size={32} className="text-info" />
+                  <span className="badge bg-info">Compras</span>
+                </div>
+                <h5 className="card-title">Registrar Nueva Compra</h5>
+                <p className="card-text flex-grow-1">
+                  Agrega productos comprados, selecciona proveedor y registra el
+                  costo.
+                </p>
+                <button
+                  className="btn btn-outline-info mt-auto"
+                  onClick={() => handleCardClick("nuevaCompra")}
+                >
+                  + Nueva Compra
                 </button>
               </div>
             </div>
@@ -237,8 +313,8 @@ function DashboardCards({ empleado, reportes, onSeleccionarModulo }) {
             <div className="card shadow-sm h-100 border-0">
               <div className="card-body d-flex flex-column">
                 <div className="d-flex justify-content-between align-items-start mb-3">
-                  <FaTags size={32} className="text-dark" />
-                  <span className="badge bg-dark">Admin</span>
+                  <FaTags size={32} className="text-danger" />
+                  <span className="badge bg-danger">Admin</span>
                 </div>
                 <h5 className="card-title">Actualizar Precios</h5>
                 <p className="card-text flex-grow-1">

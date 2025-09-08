@@ -1172,6 +1172,58 @@ app.put("/productos/:id", async (req, res) => {
   }
 });
 
+// Ruta específica para actualizar SOLO el precio (usada por el módulo de compras)
+app.put("/productos/:id/actualizar-precio", async (req, res) => {
+  const { id } = req.params;
+  const { precio } = req.body;
+
+  // Validar que el precio sea un número válido
+  if (typeof precio !== "number" || isNaN(precio) || precio < 0) {
+    return res.status(400).json({ 
+      message: "Precio debe ser un número válido y mayor o igual a 0." 
+    });
+  }
+
+  let connection;
+  try {
+    connection = await db.getConnection();
+    await connection.beginTransaction();
+
+    // Verificar que el producto exista
+    const [rows] = await connection.query("SELECT * FROM productos WHERE id = ?", [id]);
+    if (rows.length === 0) {
+      throw new Error("Producto no encontrado.");
+    }
+
+    // Actualizar SOLO el precio
+    await connection.query(
+      "UPDATE productos SET precio = ? WHERE id = ?",
+      [precio, id]
+    );
+
+    // Obtener producto actualizado
+    const [actualizado] = await connection.query("SELECT * FROM productos WHERE id = ?", [id]);
+
+    await connection.commit();
+    connection.release();
+
+    res.json({
+      id: actualizado[0].id,
+      precio: parseFloat(actualizado[0].precio),
+      message: "Precio actualizado exitosamente."
+    });
+  } catch (err) {
+    if (connection) {
+      await connection.rollback();
+      connection.release();
+    }
+    console.error("Error al actualizar precio:", err);
+    res.status(500).json({ 
+      message: err.message || "Error interno del servidor." 
+    });
+  }
+});
+
 app.get("/reportes/ventas-producto", async (req, res) => {
   try {
     const [rows] = await db.query(`
@@ -1601,7 +1653,7 @@ app.get("/reportes/ventas-diarias", async (req, res) => {
   }
 });
 
-//======COMPARTIVO DE VENTAS POR MES EN UN GARFICO======
+//======COMPARTIVO DE VENTAS POR MES EN UN GRAFICO======
 
 app.get("/reportes/ventas-comparacion", async (req, res) => {
   const query = `
@@ -1669,8 +1721,250 @@ app.get("/reportes/ventas-comparacion", async (req, res) => {
   }
 });
 
+//====PAGO DEL IVA=============
+// 1. Ventas del mes actual
+app.get("/reportes/ventas-mes-actual", async (req, res) => {
+  const query = `
+    SELECT COALESCE(SUM(total), 0) AS total
+    FROM facturas
+    WHERE MONTH(fecha) = MONTH(CURDATE())
+      AND YEAR(fecha) = YEAR(CURDATE())
+  `;
+  const [results] = await db.query(query);
+  res.json(results[0]);
+});
 
+// 2. Historial de pagos de IVA
+app.get("/pagos-iva", async (req, res) => {
+  const [results] = await db.query("SELECT * FROM pagos_iva ORDER BY fecha_pago DESC");
+  res.json(results);
+});
 
+// 3. Registrar pago de IVA
+app.post("/pagos-iva", async (req, res) => {
+  const { monto, mes, referencia } = req.body;
+  await db.query(
+    "INSERT INTO pagos_iva (monto, mes, referencia, fecha_pago) VALUES (?, ?, ?, NOW())",
+    [monto, mes, referencia]
+  );
+  res.status(201).json({ message: "Pago de IVA registrado" });
+});
+
+//====PAGO DE IMPUESTOS===========
+app.get("/impuestos/pendientes-mes", async (req, res) => {
+  const query = `
+    SELECT 
+      id,
+      factura_id,
+      monto_total,
+      monto_sin_iva,
+      monto_iva,
+      estado_registro,
+      fecha_registro,
+      estado,
+      fecha_pago
+    FROM impuestos
+    WHERE estado = 'pendiente'
+      AND MONTH(fecha_registro) = MONTH(CURDATE())
+      AND YEAR(fecha_registro) = YEAR(CURDATE())
+    ORDER BY fecha_registro DESC
+  `;
+
+  try {
+    const [results] = await db.query(query);
+
+    // ✅ Asegurar que los números sean tipo number y fechas formateadas
+    const datos = results.map(imp => ({
+      id: imp.id,
+      factura_id: imp.factura_id,
+      base_imponible: parseFloat(imp.monto_sin_iva),
+      iva_calculado: parseFloat(imp.monto_iva),
+      total_factura: parseFloat(imp.monto_total),
+      estado_registro: imp.estado_registro,
+      fecha_generacion: imp.fecha_registro,
+      estado: imp.estado,
+      fecha_pago: imp.fecha_pago
+    }));
+
+    res.json(datos);
+  } catch (err) {
+    console.error("Error al obtener impuestos pendientes:", err);
+    res.status(500).json({ 
+      message: "Error al cargar impuestos pendientes.", 
+      error: err.message 
+    });
+  }
+});
+
+//=======Registrar pago de IVA del mes=========
+app.post("/impuestos/pagar-mes", async (req, res) => {
+  const { mes, anno } = req.body;
+
+  const query = `
+    UPDATE impuestos
+    SET estado = 'pagado', fecha_pago = NOW()
+    WHERE estado = 'pendiente'
+      AND MONTH(fecha_generacion) = ?
+      AND YEAR(fecha_generacion) = ?
+  `;
+
+  try {
+    const [result] = await db.query(query, [mes, anno]);
+    res.json({ message: "Pago de IVA registrado", filas_actualizadas: result.affectedRows });
+  } catch (err) {
+    console.error("Error al pagar IVA:", err);
+    res.status(500).json({ message: "Error al registrar pago." });
+  }
+});
+
+// Pagar impuestos seleccionados
+app.post("/impuestos/pagar-seleccionados", async (req, res) => {
+  const { impuestoIds } = req.body;
+
+  if (!Array.isArray(impuestoIds) || impuestoIds.length === 0) {
+    return res.status(400).json({ message: "IDs de impuestos requeridos." });
+  }
+
+  const placeholders = impuestoIds.map(() => "?").join(",");
+  const query = `
+    UPDATE impuestos
+    SET estado = 'pagado', fecha_pago = NOW()
+    WHERE id IN (${placeholders})
+      AND estado = 'pendiente'
+  `;
+
+  try {
+    const [result] = await db.query(query, impuestoIds);
+    res.json({
+      message: `${result.affectedRows} impuesto(s) pagado(s) correctamente.`
+    });
+  } catch (err) {
+    console.error("Error al pagar impuestos seleccionados:", err);
+    res.status(500).json({ message: "Error al registrar el pago." });
+  }
+});
+
+//===============PROVEEDORES=====================
+
+// Proveedores
+app.get("/proveedores", async (req, res) => {
+  const [rows] = await db.query("SELECT * FROM proveedores ORDER BY nombre");
+  res.json(rows);
+});
+
+app.post("/proveedores", async (req, res) => {
+  const { nombre, tipo_rif, numero_rif, direccion, telefono, persona_contacto, email_contacto } = req.body;
+  await db.query(
+    `INSERT INTO proveedores (nombre, tipo_rif, numero_rif, direccion, telefono, persona_contacto, email_contacto)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [nombre, tipo_rif, numero_rif, direccion, telefono, persona_contacto, email_contacto]
+  );
+  res.status(201).json({ message: "Proveedor creado" });
+});
+
+app.put("/proveedores/:id", async (req, res) => {
+  const { id } = req.params;
+  const { nombre, tipo_rif, numero_rif, direccion, telefono, persona_contacto, email_contacto } = req.body;
+  await db.query(
+    `UPDATE proveedores SET nombre=?, tipo_rif=?, numero_rif=?, direccion=?, telefono=?, persona_contacto=?, email_contacto=?
+     WHERE id=?`,
+    [nombre, tipo_rif, numero_rif, direccion, telefono, persona_contacto, email_contacto, id]
+  );
+  res.json({ message: "Proveedor actualizado" });
+});
+
+app.delete("/proveedores/:id", async (req, res) => {
+  await db.query("DELETE FROM proveedores WHERE id=?", [req.params.id]);
+  res.json({ message: "Proveedor eliminado" });
+});
+
+//=======COMPRAS============
+
+app.post("/compras", async (req, res) => {
+  const { proveedor_id, fecha_compra, total } = req.body;
+  try {
+    const [result] = await db.query(
+      `INSERT INTO compras (proveedor_id, fecha_compra, total) VALUES (?, ?, ?)`,
+      [proveedor_id, fecha_compra, total]
+    );
+    res.status(201).json({ id: result.insertId, message: "Compra registrada" });
+  } catch (err) {
+    console.error("Error al crear compra:", err);
+    res.status(500).json({ message: "Error al registrar compra" });
+  }
+});
+
+app.post("/detalle-compras", async (req, res) => {
+  const { compra_id, producto_id, cantidad, precio_compra, subtotal } = req.body;
+  try {
+    await db.query(
+      `INSERT INTO detalle_compras (compra_id, producto_id, cantidad, precio_compra, subtotal)
+       VALUES (?, ?, ?, ?, ?)`,
+      [compra_id, producto_id, cantidad, precio_compra, subtotal]
+    );
+    res.status(201).json({ message: "Detalle agregado" });
+  } catch (err) {
+    console.error("Error al agregar detalle:", err);
+    res.status(500).json({ message: "Error al guardar detalle" });
+  }
+});
+
+// Ruta: GET /compras/con-detalles
+app.get("/compras/con-detalles", async (req, res) => {
+  const query = `
+    SELECT 
+      c.id,
+      c.fecha_compra,
+      c.total,
+      p.nombre AS proveedor_nombre,
+      dc.producto_id,
+      pr.codigo AS producto_codigo,
+      pr.descripcion AS producto_nombre,
+      dc.cantidad,
+      dc.precio_compra,
+      dc.subtotal
+    FROM compras c
+    JOIN proveedores p ON c.proveedor_id = p.id
+    JOIN detalle_compras dc ON c.id = dc.compra_id
+    JOIN productos pr ON dc.producto_id = pr.id
+    ORDER BY c.fecha_compra DESC, c.id DESC
+  `;
+
+  try {
+    const [rows] = await db.query(query);
+
+    // Agrupar detalles por compra
+    const compras = [];
+    const map = new Map();
+
+    rows.forEach(row => {
+      if (!map.has(row.id)) {
+        map.set(row.id, {
+          id: row.id,
+          fecha_compra: row.fecha_compra,
+          total: parseFloat(row.total),
+          proveedor_nombre: row.proveedor_nombre,
+          detalles: []
+        });
+        compras.push(map.get(row.id));
+      }
+
+      map.get(row.id).detalles.push({
+        producto_id: row.producto_id,
+        producto_codigo: row.producto_codigo,
+        producto_nombre: row.producto_nombre,
+        cantidad: row.cantidad,
+        precio_compra: parseFloat(row.precio_compra),
+        subtotal: parseFloat(row.subtotal)
+      });
+    });
+
+    res.json(compras);
+  } catch (err) {
+    console.error("Error al obtener detalles de compras:", err);
+    res.status(500).json({ message: "Error al cargar detalles de compras." });
+  }
+});
 
 
 // ✅ Iniciar servidor
